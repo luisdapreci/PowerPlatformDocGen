@@ -1,0 +1,492 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "impersonation": {},
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "crbf0_sharedcommondataserviceforapps_babc0"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "When_a_row_is_added_-_Opportunities": {
+          "metadata": {
+            "operationMetadataId": "d4cbfd2c-71f0-4b12-a28a-f5b03998c2b1"
+          },
+          "type": "OpenApiConnectionWebhook",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "SubscribeWebhookTrigger"
+            },
+            "parameters": {
+              "subscriptionRequest/message": 1,
+              "subscriptionRequest/entityname": "cr6b0_opportunity",
+              "subscriptionRequest/scope": 4
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      },
+      "actions": {
+        "Initialize_variable_-_Specialization_Area_ID": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "772e1eb9-6299-48dc-9909-1a9665d7ab2d"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Specialization Area ID",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "Add_a_new_row_-_Projects": {
+          "runAfter": {
+            "Get_a_row_by_ID_-_Accounts": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "48184a71-fd8b-4c9f-92fd-9e4cfecf3772"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "CreateRecord"
+            },
+            "parameters": {
+              "entityName": "cr6b0_projects",
+              "item/cr6b0_account@odata.bind": "@variables('Account ID')",
+              "item/cr6b0_clientcontact@odata.bind": "@variables('Contact ID')",
+              "item/cr6b0_currentprojectstatus": 0,
+              "item/cr6b0_CustomerSuccessManager@odata.bind": "@variables('CSM ID')",
+              "item/crbf0_defaultproject": true,
+              "item/cr6b0_deliverymanager@odata.bind": "@variables('DM ID')",
+              "item/cr6b0_enableprojecttracker": true,
+              "item/cr6b0_Opportunity@odata.bind": "@variables('Opportunity ID')",
+              "item/cr6b0_projectdescription": "@triggerOutputs()?['body/cr6b0_description']",
+              "item/cr6b0_projectenddate": "@triggerOutputs()?['body/cr6b0_poenddate']",
+              "item/cr6b0_projectstartdate": "@triggerOutputs()?['body/cr6b0_postartdate']",
+              "item/cr6b0_projecttitle": "@triggerOutputs()?['body/cr6b0_opportunityname']",
+              "item/cr6b0_projecttotalprice": "@triggerOutputs()?['body/cr6b0_amount']",
+              "item/cr6b0_projecttype": 486760002,
+              "item/cr6b0_purchaseordernumber": "@triggerOutputs()?['body/cr6b0_msftponumber']",
+              "item/cr6b0_resourcingstatus": 486760000,
+              "item/cr6b0_typeofproject": "@if(equals(outputs('Get_a_row_by_ID_-_Accounts')?['body/name'], 'Nextant LLC'), 486760001, 486760000)",
+              "accept": "application/json;odata.metadata=minimal"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Initialize_variable_-_Project_ID": {
+          "runAfter": {
+            "Add_a_new_row_-_Projects": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "2a56745e-9106-44f4-8e40-46553f30dc33"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Project ID",
+                "type": "string",
+                "value": "@{concat('/cr6b0_projects(', outputs('Add_a_new_row_-_Projects')?['body/cr6b0_projectid'], ')')}"
+              }
+            ]
+          }
+        },
+        "List_rows_-_Specialization_Areas": {
+          "runAfter": {
+            "Initialize_variable_-_Project_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "bd7c54a2-283a-4667-ae4c-d2e0a80bd304"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "ListRecords"
+            },
+            "parameters": {
+              "entityName": "cr6b0_specializationareas",
+              "$filter": "cr6b0_specializationareaname eq 'N/A'",
+              "$top": 1,
+              "accept": "application/json;odata.metadata=minimal"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Apply_to_each": {
+          "foreach": "@outputs('List_rows_-_Specialization_Areas')?['body/value']",
+          "actions": {
+            "Set_variable_-_Specialization_Area_ID": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "28eacfb9-520a-49aa-ab0b-4d1c43ef1993"
+              },
+              "type": "SetVariable",
+              "inputs": {
+                "name": "Specialization Area ID",
+                "value": "@{concat('/cr6b0_specializationareas(', items('Apply_to_each')?['cr6b0_specializationareaid'], ')')}"
+              }
+            }
+          },
+          "runAfter": {
+            "List_rows_-_Specialization_Areas": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "61633fde-d32d-465b-b927-90b2673e106b"
+          },
+          "type": "Foreach"
+        },
+        "Add_a_new_row_-_Workstreams": {
+          "runAfter": {
+            "Apply_to_each": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "0345863e-143b-41f8-8b55-bb85d9581d30"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "CreateRecord"
+            },
+            "parameters": {
+              "entityName": "cr6b0_workstreams",
+              "item/cr6b0_deliverablessignificant": "N/A",
+              "item/cr6b0_SpecializationArea@odata.bind": "@variables('Specialization Area ID')",
+              "item/cr6b0_workstreamoverview": "This workstream should be used by Delivery Managers to capture time spent managing the project team; including overseeing the team, organizing team priorities, managing client relationships, maintaining Project Trackers, completing Delivery Assessments, and any PM work focused on the project's success.",
+              "item/cr6b0_workstreamtitle": "Delivery Management",
+              "item/cr6b0_associatedproject@odata.bind": "@variables('Project ID')",
+              "item/cr6b0_significantdeliverables": "N/A",
+              "item/cr6b0_workstreamstatus": true,
+              "accept": "application/json;odata.metadata=minimal"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Add_a_new_row_-_Workstreams_2": {
+          "runAfter": {
+            "Add_a_new_row_-_Workstreams": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "81268665-4213-4bbf-b59b-dacf36aa701e"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "CreateRecord"
+            },
+            "parameters": {
+              "entityName": "cr6b0_workstreams",
+              "item/cr6b0_deliverablessignificant": "N/A",
+              "item/cr6b0_SpecializationArea@odata.bind": "@variables('Specialization Area ID')",
+              "item/cr6b0_workstreamoverview": "This workstream should be used to track time spent on Nextant internal activities and ROB related to the project; including Weekly Delivery Team Meetings, Innovation Discussions, Account Delivery Team Checkpoints, and Project Oversight Meetings with CSMs and/or SA leadership.",
+              "item/cr6b0_workstreamtitle": "Internal ROB",
+              "item/cr6b0_associatedproject@odata.bind": "@variables('Project ID')",
+              "item/cr6b0_significantdeliverables": "N/A",
+              "item/cr6b0_workstreamstatus": true,
+              "accept": "application/json;odata.metadata=minimal"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Get_a_row_by_ID_-_Accounts": {
+          "runAfter": {
+            "Initialize_variable_-_Opportunity_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "f9d61159-b5a0-4a39-b406-c08d07fc5613"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "GetItem"
+            },
+            "parameters": {
+              "entityName": "accounts",
+              "recordId": "@triggerOutputs()?['body/_cr6b0_account_value']",
+              "accept": "application/json;odata.metadata=minimal"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Initialize_variable_-_Contact_ID": {
+          "runAfter": {
+            "Condition_-_CSM_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "b3a8cc74-1ac1-467e-a112-a30e95d8ef97"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Contact ID",
+                "type": "string",
+                "value": "@{null}"
+              }
+            ]
+          }
+        },
+        "Initialize_variable_-_Opportunity_ID": {
+          "runAfter": {
+            "Condition_-_DM_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "f203e894-c1b4-4f27-a275-3956524c3530"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Opportunity ID",
+                "type": "string",
+                "value": "@{concat('/cr6b0_opportunities(', triggerOutputs()?['body/cr6b0_opportunityid'], ')')}"
+              }
+            ]
+          }
+        },
+        "Initialize_variable_-_DM_ID": {
+          "runAfter": {
+            "Condition_-_Contact_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "f0480c14-4875-4cfd-90d3-dfe4c25b3f07"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "DM ID",
+                "type": "string",
+                "value": "@{null}"
+              }
+            ]
+          }
+        },
+        "Condition_-_Account_ID": {
+          "actions": {
+            "Set_variable_-_Account_ID": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "22f3d755-606c-4977-b202-e573178dbeab"
+              },
+              "type": "SetVariable",
+              "inputs": {
+                "name": "Account ID",
+                "value": "@{concat('/accounts(', triggerOutputs()?['body/_cr6b0_account_value'], ')')}"
+              }
+            }
+          },
+          "runAfter": {
+            "Initialize_variable_-_Account_ID": [
+              "Succeeded"
+            ]
+          },
+          "expression": {
+            "not": {
+              "equals": [
+                "@triggerOutputs()?['body/_cr6b0_account_value']",
+                "@null"
+              ]
+            }
+          },
+          "metadata": {
+            "operationMetadataId": "b1ce8558-25f7-4214-9117-75dd063eb357"
+          },
+          "type": "If"
+        },
+        "Initialize_variable_-_Account_ID": {
+          "runAfter": {
+            "Initialize_variable_-_Specialization_Area_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "de004a48-5950-4bd6-b19b-b7baa9537507"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Account ID",
+                "type": "string",
+                "value": "@{null}"
+              }
+            ]
+          }
+        },
+        "Condition_-_CSM_ID": {
+          "actions": {
+            "Set_variable_-_CSM_ID": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "99d51a21-84dc-43d5-a836-123f31e3e4b0"
+              },
+              "type": "SetVariable",
+              "inputs": {
+                "name": "CSM ID",
+                "value": "@{concat('/cr6b0_consultants(', triggerOutputs()?['body/_cr6b0_customersuccessmanager_value'], ')')}"
+              }
+            }
+          },
+          "runAfter": {
+            "Initialize_variable_-_CSM_ID": [
+              "Succeeded"
+            ]
+          },
+          "expression": {
+            "not": {
+              "equals": [
+                "@triggerOutputs()?['body/_cr6b0_customersuccessmanager_value']",
+                "@null"
+              ]
+            }
+          },
+          "metadata": {
+            "operationMetadataId": "82189938-71ad-4fd3-b6bc-63f1c22bc3af"
+          },
+          "type": "If"
+        },
+        "Initialize_variable_-_CSM_ID": {
+          "runAfter": {
+            "Condition_-_Account_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "864a809d-aef1-4516-b513-853df30eacff"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "CSM ID",
+                "type": "string",
+                "value": "@{null}"
+              }
+            ]
+          }
+        },
+        "Condition_-_Contact_ID": {
+          "actions": {
+            "Set_variable_-_Contact_ID": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "71261df9-be18-4675-ab09-444d5f2e94d5"
+              },
+              "type": "SetVariable",
+              "inputs": {
+                "name": "Contact ID",
+                "value": "@{concat('/contacts(', triggerOutputs()?['body/_crbf0_contactlookup_value'], ')')}"
+              }
+            }
+          },
+          "runAfter": {
+            "Initialize_variable_-_Contact_ID": [
+              "Succeeded"
+            ]
+          },
+          "expression": {
+            "not": {
+              "equals": [
+                "@triggerOutputs()?['body/_crbf0_contactlookup_value']",
+                "@null"
+              ]
+            }
+          },
+          "metadata": {
+            "operationMetadataId": "edae22d2-0cb0-4543-9b24-79ab2f915a73"
+          },
+          "type": "If"
+        },
+        "Condition_-_DM_ID": {
+          "actions": {
+            "Set_variable_-_DM_ID": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "82348bcc-4653-4156-8964-0c12c63237bc"
+              },
+              "type": "SetVariable",
+              "inputs": {
+                "name": "DM ID",
+                "value": "@{concat('/users(', triggerOutputs()?['body/_cr6b0_deliveryownercsm_value'], ')')}"
+              }
+            }
+          },
+          "runAfter": {
+            "Initialize_variable_-_DM_ID": [
+              "Succeeded"
+            ]
+          },
+          "expression": {
+            "not": {
+              "equals": [
+                "@triggerOutputs()?['body/_cr6b0_deliveryownercsm_value']",
+                "@null"
+              ]
+            }
+          },
+          "metadata": {
+            "operationMetadataId": "c4cca0e5-3c8a-44f2-8077-922c76d9fd6b"
+          },
+          "type": "If"
+        }
+      }
+    },
+    "templateName": null
+  },
+  "schemaVersion": "1.0.0.0"
+}

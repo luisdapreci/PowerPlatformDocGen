@@ -1,0 +1,354 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr6b0_sharedcommondataserviceforapps_17284"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      },
+      "shared_office365": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "new_sharedoffice365_0e543"
+        },
+        "api": {
+          "name": "shared_office365"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "Recurrence": {
+          "recurrence": {
+            "frequency": "Week",
+            "interval": 1,
+            "timeZone": "SA Pacific Standard Time",
+            "schedule": {
+              "weekDays": [
+                "Monday"
+              ],
+              "hours": [
+                "8"
+              ]
+            }
+          },
+          "evaluatedRecurrence": {
+            "frequency": "Week",
+            "interval": 1,
+            "timeZone": "SA Pacific Standard Time",
+            "schedule": {
+              "weekDays": [
+                "Monday"
+              ],
+              "hours": [
+                "8"
+              ]
+            }
+          },
+          "metadata": {
+            "operationMetadataId": "0e0f644a-c59f-4056-91ac-d1748665c464"
+          },
+          "type": "Recurrence"
+        }
+      },
+      "actions": {
+        "Run_a_Child_Flow": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "c31dafae-9f24-4946-a33f-bb163f6a6c39"
+          },
+          "type": "Workflow",
+          "inputs": {
+            "host": {
+              "workflowReferenceName": "ff4367ba-703d-f011-b4cc-7c1e5281f9ed"
+            }
+          }
+        },
+        "HTTP_-_Get_Information_UKG": {
+          "runAfter": {
+            "Send_an_email_(V2)_2": [
+              "Skipped"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "9172fe9a-b304-4440-afc3-545da602e449"
+          },
+          "type": "Http",
+          "inputs": {
+            "method": "GET",
+            "uri": "https://secure.saashr.com/ta/rest/v1/report/saved/107562728",
+            "headers": {
+              "Accept": "application/xml",
+              "Authentication": "Bearer @{body('Run_a_Child_Flow')?['token']}",
+              "Content-Type": "application/json",
+              "Content-length": "365"
+            }
+          }
+        },
+        "Compose": {
+          "runAfter": {
+            "HTTP_-_Get_Information_UKG": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "1c4000ae-0079-44f1-901c-c88a6c5a6e8a"
+          },
+          "type": "Compose",
+          "inputs": "@body('HTTP_-_Get_Information_UKG')"
+        },
+        "Select": {
+          "runAfter": {
+            "Compose": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "dc909d11-c379-467f-81b8-063282bdd64d"
+          },
+          "type": "Select",
+          "inputs": {
+            "from": "@json(outputs('Compose'))['result']['body']['row']\r\n",
+            "select": {
+              "New Role": "@item()?['col'][4]",
+              "Previous Role": "@item()?['col'][5]",
+              "Date Changed": "@item()?['col'][6]",
+              "Email": "@concat(item()?['col'][7],'@nextant.com')"
+            }
+          }
+        },
+        "Apply_to_each": {
+          "foreach": "@body('Select')",
+          "actions": {
+            "List_rows_-_Consultants": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "5bda7b68-8343-476b-823c-a15306799849"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_consultants",
+                  "$filter": "cr6b0_email eq '@{items('Apply_to_each')?['Email']}'",
+                  "$top": 1
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Apply_to_each_2": {
+              "foreach": "@outputs('List_rows_-_Consultants')?['body/value']",
+              "actions": {
+                "Condition": {
+                  "actions": {
+                    "Condition_2": {
+                      "actions": {
+                        "Update_a_row_-_Consultants": {
+                          "runAfter": {},
+                          "metadata": {
+                            "operationMetadataId": "f60633ed-7cd5-4143-a3e3-31828e49f402"
+                          },
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "host": {
+                              "connectionName": "shared_commondataserviceforapps",
+                              "operationId": "UpdateOnlyRecord",
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                            },
+                            "parameters": {
+                              "entityName": "cr6b0_consultants",
+                              "recordId": "@items('Apply_to_each_2')?['cr6b0_consultantid']",
+                              "item/cr6b0_previousrole": "@items('Apply_to_each')?['Previous Role']",
+                              "item/cr6b0_rolechangedate": "@items('Apply_to_each')?['Date Changed']"
+                            },
+                            "authentication": "@parameters('$authentication')"
+                          }
+                        }
+                      },
+                      "runAfter": {},
+                      "else": {
+                        "actions": {
+                          "Condition_3": {
+                            "actions": {
+                              "Update_a_row_-_Consultants_2": {
+                                "runAfter": {},
+                                "metadata": {
+                                  "operationMetadataId": "65a9e277-96b9-4536-a4ae-3f9d7ad202cd"
+                                },
+                                "type": "OpenApiConnection",
+                                "inputs": {
+                                  "host": {
+                                    "connectionName": "shared_commondataserviceforapps",
+                                    "operationId": "UpdateOnlyRecord",
+                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                                  },
+                                  "parameters": {
+                                    "entityName": "cr6b0_consultants",
+                                    "recordId": "@items('Apply_to_each_2')?['cr6b0_consultantid']",
+                                    "item/cr6b0_previousrole": "@items('Apply_to_each')?['Previous Role']",
+                                    "item/cr6b0_rolechangedate": "@items('Apply_to_each')?['Date Changed']"
+                                  },
+                                  "authentication": "@parameters('$authentication')"
+                                }
+                              }
+                            },
+                            "runAfter": {},
+                            "expression": {
+                              "and": [
+                                {
+                                  "contains": [
+                                    "@items('Apply_to_each')?['New Role']",
+                                    "Colombia"
+                                  ]
+                                },
+                                {
+                                  "equals": [
+                                    "@items('Apply_to_each_2')?['cr6b0_location']",
+                                    "Colombia"
+                                  ]
+                                }
+                              ]
+                            },
+                            "metadata": {
+                              "operationMetadataId": "d318c521-b95d-4429-b661-e18fa78d10e8"
+                            },
+                            "type": "If"
+                          }
+                        }
+                      },
+                      "expression": {
+                        "and": [
+                          {
+                            "contains": [
+                              "@items('Apply_to_each')?['New Role']",
+                              "US"
+                            ]
+                          },
+                          {
+                            "equals": [
+                              "@items('Apply_to_each_2')?['cr6b0_location']",
+                              "United States"
+                            ]
+                          }
+                        ]
+                      },
+                      "metadata": {
+                        "operationMetadataId": "1831a582-ebf1-4120-91ce-ad920ad82ac9"
+                      },
+                      "type": "If"
+                    }
+                  },
+                  "runAfter": {},
+                  "expression": {
+                    "contains": [
+                      "@items('Apply_to_each')?['New Role']",
+                      "@replace(items('Apply_to_each_2')?['cr6b0_consultantlevel'], '*', '')"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "13ad2b28-1d06-4c52-bfb8-dda4c1b008f6"
+                  },
+                  "type": "If"
+                }
+              },
+              "runAfter": {
+                "List_rows_-_Consultants": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "0c89363e-1678-47b2-b7e7-c514107600e4"
+              },
+              "type": "Foreach"
+            }
+          },
+          "runAfter": {
+            "Select": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "a824517f-087a-44eb-9f3b-cbb3801e7267"
+          },
+          "type": "Foreach"
+        },
+        "Send_an_email_(V2)": {
+          "runAfter": {
+            "Apply_to_each": [
+              "Failed",
+              "TimedOut"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "8237b928-1bb1-4610-9ae3-49ab7e95e42f"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_office365",
+              "operationId": "SendEmailV2",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+            },
+            "parameters": {
+              "emailMessage/To": "jrojas@nextant.com;ssangal@nextant.com",
+              "emailMessage/Subject": "The Get Information UKG - Role Change flow has failed",
+              "emailMessage/Body": "<p>The Get Information UKG - Role Change flow has failed, pelase review it on the Power Automate site.</p>",
+              "emailMessage/Importance": "Normal"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Send_an_email_(V2)_2": {
+          "runAfter": {
+            "Run_a_Child_Flow": [
+              "Failed",
+              "TimedOut"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "8237b928-1bb1-4610-9ae3-49ab7e95e42f"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_office365",
+              "operationId": "SendEmailV2",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+            },
+            "parameters": {
+              "emailMessage/To": "jrojas@nextant.com;ssangal@nextant.com",
+              "emailMessage/Subject": "Role Change flow has failed due to an authentication error",
+              "emailMessage/Body": "<p>The Get Information UKG - Role Change flow has failed, pelase review it on the Power Automate site.</p>",
+              "emailMessage/Cc": "emonsalve@nextant.com",
+              "emailMessage/Importance": "Normal"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      },
+      "outputs": {}
+    },
+    "templateName": ""
+  },
+  "schemaVersion": "1.0.0.0"
+}

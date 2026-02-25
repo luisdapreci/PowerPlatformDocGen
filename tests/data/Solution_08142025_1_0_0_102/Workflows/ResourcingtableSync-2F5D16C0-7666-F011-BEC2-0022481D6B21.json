@@ -1,0 +1,399 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_excelonlinebusiness": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr49f_sharedexcelonlinebusiness_45414"
+        },
+        "api": {
+          "name": "shared_excelonlinebusiness"
+        }
+      },
+      "shared_commondataserviceforapps": {
+        "impersonation": {},
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr6b0_sharedcommondataserviceforapps_17284"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "manual": {
+          "metadata": {
+            "operationMetadataId": "16672269-5185-499e-bc32-8144dc1cb0bf"
+          },
+          "type": "Request",
+          "kind": "Button",
+          "inputs": {
+            "schema": {
+              "type": "object",
+              "properties": {},
+              "required": []
+            }
+          }
+        }
+      },
+      "actions": {
+        "List_rows_present_in_a_table": {
+          "runAfter": {},
+          "metadata": {
+            "01LBYJT7XWP4ZD4UTBPVA3SP3LBCVRTI57": "/Microsoft Teams Chat Files/Project Mapping Template.xlsx",
+            "operationMetadataId": "34c6b42a-fc11-4a72-94b1-2e9b51f113d6",
+            "tableId": "{A6D0EFAB-E72D-46D3-950A-2E099FDC3DCE}"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+              "connectionName": "shared_excelonlinebusiness",
+              "operationId": "GetItems"
+            },
+            "parameters": {
+              "source": "me",
+              "drive": "b!4hyNhA-bsUmOdmjlc9ESVWQ8aOqevRBIk4n7rZSr8t1GXktusE3dT5UFGfCl1hgW",
+              "file": "01LBYJT7XWP4ZD4UTBPVA3SP3LBCVRTI57",
+              "table": "{A6D0EFAB-E72D-46D3-950A-2E099FDC3DCE}"
+            },
+            "authentication": "@parameters('$authentication')"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 1000
+            }
+          }
+        },
+        "Apply_to_each": {
+          "foreach": "@outputs('List_rows_present_in_a_table')?['body/value']",
+          "actions": {
+            "List_rows_-_Projects": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "aca0e21c-e67d-43b0-ba42-1570ac9ba5a4"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_projects",
+                  "$filter": "cr6b0_projecttitle eq '@{items('Apply_to_each')?['Project Name']}'",
+                  "$top": 1
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Apply_to_each_2": {
+              "foreach": "@outputs('List_rows_-_Projects')?['body/value']",
+              "actions": {
+                "Set_variable_-_Project_ID": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "edf23e6d-60e5-46ec-8eb4-9df5d61fd0b1"
+                  },
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "Project ID",
+                    "value": "@items('Apply_to_each_2')?['cr6b0_projectid']"
+                  }
+                }
+              },
+              "runAfter": {
+                "List_rows_-_Projects": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "b54762ac-1ad6-4378-b69a-dea7a0fb54fc"
+              },
+              "type": "Foreach"
+            },
+            "List_rows_-_Consultants": {
+              "runAfter": {
+                "Apply_to_each_2": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "ff35f721-d10d-407d-86b4-4b4608cf74fb"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_consultants",
+                  "$filter": "cr6b0_consultantname eq '@{items('Apply_to_each')?['*Consultant Name']}'",
+                  "$top": 1
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Apply_to_each_3": {
+              "foreach": "@outputs('List_rows_-_Consultants')?['body/value']",
+              "actions": {
+                "Set_variable_-_Consultant_ID": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "15bb6afd-1a08-473b-84f4-14a826e124ff"
+                  },
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "Consultant ID",
+                    "value": "@items('Apply_to_each_3')?['cr6b0_consultantid']"
+                  }
+                }
+              },
+              "runAfter": {
+                "List_rows_-_Consultants": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "f9281159-776e-4358-b3a7-ca96c78e184b"
+              },
+              "type": "Foreach"
+            },
+            "Set_variable_-_Project_ID_2": {
+              "runAfter": {
+                "Condition": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "61ed1a4e-fc4a-4d44-8ae3-83020b1c9952"
+              },
+              "type": "SetVariable",
+              "inputs": {
+                "name": "Project ID",
+                "value": "@{null}"
+              }
+            },
+            "Set_variable_-_Consultant_ID_2": {
+              "runAfter": {
+                "Set_variable_-_Project_ID_2": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "173e5caa-a201-4c6a-8933-f8b189be24a3"
+              },
+              "type": "SetVariable",
+              "inputs": {
+                "name": "Consultant ID",
+                "value": "@{null}"
+              }
+            },
+            "Set_variable_-_Resourcing_ID_2": {
+              "runAfter": {
+                "Set_variable_-_Consultant_ID_2": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "12aef1d2-b3fa-4ac8-a2af-09d3cd6a176a"
+              },
+              "type": "SetVariable",
+              "inputs": {
+                "name": "Resourcing ID",
+                "value": "@{guid()}"
+              }
+            },
+            "Condition": {
+              "actions": {
+                "List_rows_-_Project_Resourcings": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "583e8898-513e-43d2-8977-67682e58ae4e"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "ListRecords"
+                    },
+                    "parameters": {
+                      "entityName": "cr6b0_projectresourcings",
+                      "$filter": "_cr6b0_relatedproject_value eq '@{variables('Project ID')}' and _cr6b0_consultant_value eq '@{variables('Consultant ID')}'",
+                      "$top": 1
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Apply_to_each_4": {
+                  "foreach": "@outputs('List_rows_-_Project_Resourcings')?['body/value']",
+                  "actions": {
+                    "Set_variable_-_Resourcing_ID": {
+                      "runAfter": {},
+                      "metadata": {
+                        "operationMetadataId": "344a1bb3-69f7-4cd9-9086-619f3272869f"
+                      },
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "Resourcing ID",
+                        "value": "@items('Apply_to_each_4')?['cr6b0_projectresourcingid']"
+                      }
+                    }
+                  },
+                  "runAfter": {
+                    "List_rows_-_Project_Resourcings": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "161b1aea-e49d-4c91-8080-0fb6306abadd"
+                  },
+                  "type": "Foreach"
+                },
+                "Upsert_a_row_-_Project_Resourcings": {
+                  "runAfter": {
+                    "Apply_to_each_4": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "41f9a42e-bba8-45f7-9e9a-3588e419b964"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "UpdateRecord"
+                    },
+                    "parameters": {
+                      "entityName": "cr6b0_projectresourcings",
+                      "recordId": "@variables('Resourcing ID')",
+                      "item/cr6b0_Consultant@odata.bind": "@concat('/cr6b0_consultants(', variables('Consultant ID'), ')')",
+                      "item/cr6b0_fiscalyear": 2026,
+                      "item/cr6b0_projectname": "@items('Apply_to_each')?['Project Name']",
+                      "item/cr6b0_RelatedProject@odata.bind": "@concat('/cr6b0_projects(', variables('Project ID'), ')')"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              },
+              "runAfter": {
+                "Apply_to_each_3": [
+                  "Succeeded"
+                ]
+              },
+              "expression": {
+                "and": [
+                  {
+                    "greater": [
+                      "@length(variables('Project ID'))",
+                      0
+                    ]
+                  },
+                  {
+                    "greater": [
+                      "@length(variables('Consultant ID'))",
+                      0
+                    ]
+                  }
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "1c5f4c9e-7388-47b1-ba20-470e15ec5daf"
+              },
+              "type": "If"
+            }
+          },
+          "runAfter": {
+            "Initialize_variable_-_Resourcing_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "7b5bfee1-7fc1-4d6b-aeee-9802c44b548e"
+          },
+          "type": "Foreach"
+        },
+        "Initialize_variable_-_Project_ID": {
+          "runAfter": {
+            "List_rows_present_in_a_table": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "7560a3c0-1a59-4fc1-aceb-fe67330db191"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Project ID",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "Initialize_variable_-_Consultant_ID": {
+          "runAfter": {
+            "Initialize_variable_-_Project_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "f342461d-70b5-42cf-8f62-033e7032c65f"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Consultant ID",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "Initialize_variable_-_Resourcing_ID": {
+          "runAfter": {
+            "Initialize_variable_-_Consultant_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "de004d83-36bb-48cf-b41d-faeaede51ef8"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Resourcing ID",
+                "type": "string",
+                "value": "@{guid()}"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "templateName": null
+  },
+  "schemaVersion": "1.0.0.0"
+}

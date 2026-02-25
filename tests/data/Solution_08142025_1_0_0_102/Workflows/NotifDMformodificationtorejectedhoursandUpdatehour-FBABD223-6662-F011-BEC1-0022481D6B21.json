@@ -1,0 +1,326 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr6b0_sharedcommondataserviceforapps_17284"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      },
+      "shared_teams": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr49f_sharedteams_82b84"
+        },
+        "api": {
+          "name": "shared_teams"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "manual": {
+          "metadata": {
+            "operationMetadataId": "5f3f4f36-74f2-4459-9b7d-ebb75c775aa0"
+          },
+          "type": "Request",
+          "kind": "PowerAppV2",
+          "inputs": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "title": "ConsultantID",
+                  "type": "string",
+                  "x-ms-dynamically-added": true,
+                  "description": "Please enter your input",
+                  "x-ms-content-hint": "TEXT"
+                },
+                "text_1": {
+                  "title": "ProjectID",
+                  "type": "string",
+                  "x-ms-dynamically-added": true,
+                  "description": "Please enter your input",
+                  "x-ms-content-hint": "TEXT"
+                },
+                "date": {
+                  "title": "WeekStartDate",
+                  "type": "string",
+                  "format": "date",
+                  "x-ms-dynamically-added": true,
+                  "description": "Please enter or select a date (YYYY-MM-DD)",
+                  "x-ms-content-hint": "DATE"
+                }
+              },
+              "required": [
+                "text",
+                "text_1",
+                "date"
+              ]
+            }
+          }
+        }
+      },
+      "actions": {
+        "Initialize_variable_-_Week_Dates": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "6c1885d9-e3d0-4755-8f7e-b7a9e40ff2d2"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Week Dates",
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "Compose_-_Week": {
+          "runAfter": {
+            "Initialize_variable_-_Week_Dates": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "2b5d0340-4ee5-4529-afb5-c641e0ecd58f"
+          },
+          "type": "Compose",
+          "inputs": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ]
+        },
+        "Apply_to_each": {
+          "foreach": "@outputs('Compose_-_Week')",
+          "actions": {
+            "Append_to_array_variable_-_Week_Dates": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "ba530ab6-2c66-4d69-89ce-479b1e71a2ae"
+              },
+              "type": "AppendToArrayVariable",
+              "inputs": {
+                "name": "Week Dates",
+                "value": "@formatDateTime(addDays(triggerBody()['date'], items('Apply_to_each')), 'yyyy-MM-dd')\r\n"
+              }
+            }
+          },
+          "runAfter": {
+            "Compose_-_Week": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "0b2b4e3f-7e41-4133-8b2b-d243340c1e79"
+          },
+          "type": "Foreach"
+        },
+        "List_rows_-_Hours": {
+          "runAfter": {
+            "Apply_to_each": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "343abd8e-78f9-4c73-b972-787439fabb51"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "ListRecords",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "entityName": "cr6b0_hourses",
+              "$filter": "cr6b0_currentstatus eq 2 and _cr6b0_consultantname_value eq '@{triggerBody()['text']}' and _cr6b0_project_value eq '@{triggerBody()['text_1']}'"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Filter_array": {
+          "runAfter": {
+            "List_rows_-_Hours": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "c758fabb-c5e0-4e0d-b051-e6019d6afca2"
+          },
+          "type": "Query",
+          "inputs": {
+            "from": "@outputs('List_rows_-_Hours')?['body/value']",
+            "where": "@equals(contains(variables('Week Dates'), formatDateTime(item()?['cr6b0_workeddate'], 'yyyy-MM-dd')), true)"
+          }
+        },
+        "Condition": {
+          "actions": {
+            "Apply_to_each_2": {
+              "foreach": "@body('Filter_array')",
+              "actions": {
+                "Update_a_row_-_Hours": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "5f661054-6ca9-4105-8513-00db9ea3ec96"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "UpdateOnlyRecord",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                    },
+                    "parameters": {
+                      "entityName": "cr6b0_hourses",
+                      "recordId": "@items('Apply_to_each_2')?['cr6b0_hoursid']",
+                      "item/cr6b0_currentstatus": 0
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              },
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "a8ec7608-d0a4-40ea-80f0-6bc97a050b19"
+              },
+              "type": "Foreach"
+            },
+            "Get_a_row_by_ID_-_Users": {
+              "runAfter": {
+                "Get_a_row_by_ID_-_Projects": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "32a8b34e-ea0f-42eb-9eb0-59af70c94dae"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "GetItem",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "systemusers",
+                  "recordId": "@outputs('Get_a_row_by_ID_-_Projects')?['body/_cr6b0_deliverymanager_value']"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Get_a_row_by_ID_-_Projects": {
+              "runAfter": {
+                "Apply_to_each_2": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "87f8c5ff-6c33-4b67-b59f-d95d6ebff164"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "GetItem",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_projects",
+                  "recordId": "@triggerBody()['text_1']"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Get_a_row_by_ID_-_Consultant": {
+              "runAfter": {
+                "Get_a_row_by_ID_-_Users": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "4029b776-3b65-4658-972f-149e042bda21"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "GetItem",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_consultants",
+                  "recordId": "@triggerBody()['text']"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Post_card_in_a_chat_or_channel": {
+              "runAfter": {
+                "Get_a_row_by_ID_-_Consultant": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "030242df-2cf9-41a8-9a29-fb31e42a2f08"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_teams",
+                  "operationId": "PostCardToConversation",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams"
+                },
+                "parameters": {
+                  "poster": "Flow bot",
+                  "location": "Chat with Flow bot",
+                  "body/recipient": "@{outputs('Get_a_row_by_ID_-_Users')?['body/internalemailaddress']};",
+                  "body/messageBody": "{\n  \"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\",\n  \"type\": \"AdaptiveCard\",\n  \"version\": \"1.4\",\n  \"body\": [\n    {\n      \"type\": \"Image\",\n      \"url\": \"https://i.imgur.com/1sFqAun.png\",\n      \"size\": \"Large\",\n      \"horizontalAlignment\": \"Left\",\n      \"altText\": \"NEXTANT Logo\"\n    },\n    {\n      \"type\": \"TextBlock\",\n      \"text\": \"Review @{outputs('Get_a_row_by_ID_-_Consultant')?['body/cr6b0_consultantname']}'s Hours Correction\",\n      \"wrap\": true,\n      \"size\": \"Large\",\n      \"weight\": \"Bolder\",\n      \"horizontalAlignment\": \"Left\",\n      \"spacing\": \"Medium\"\n    },\n    {\n      \"type\": \"TextBlock\",\n      \"text\": \"Hey @{outputs('Get_a_row_by_ID_-_Users')?['body/firstname']}! Hope you are having a good day.\",\n      \"wrap\": true,\n      \"horizontalAlignment\": \"Left\",\n      \"spacing\": \"Small\"\n    },\n    {\n      \"type\": \"TextBlock\",\n      \"text\": \"**@{outputs('Get_a_row_by_ID_-_Consultant')?['body/cr6b0_consultantname']}** has updated their rejected hours for **@{outputs('Get_a_row_by_ID_-_Projects')?['body/cr6b0_projecttitle']}** for the week of **@{triggerBody()['date']}**.\n\nPlease review them in the app.\",\n      \"wrap\": true,\n      \"horizontalAlignment\": \"Left\",\n      \"spacing\": \"Small\"\n    }\n  ],\n  \"actions\": [\n    {\n      \"type\": \"Action.OpenUrl\",\n      \"title\": \"Hour Tracker App\",\n      \"url\": \"https://apps.powerapps.com/play/e/ce09ad9b-57d1-e5df-9400-8ce973c86213/a/2c6fbdc1-3775-409f-9d10-2eda00fd38b4?tenantId=d232b207-f86f-4fba-8891-ccbf30b12898&hint=5a1cc166-44cb-4878-a4d8-05dfc7019a64&sourcetime=1750978450730\"\n    }\n  ]\n}\n"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "runAfter": {
+            "Filter_array": [
+              "Succeeded"
+            ]
+          },
+          "expression": {
+            "greater": [
+              "@length(body('Filter_array'))",
+              0
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "0abbe006-cd47-4183-b487-004f7f98d1af"
+          },
+          "type": "If"
+        }
+      }
+    },
+    "templateName": ""
+  },
+  "schemaVersion": "1.0.0.0"
+}

@@ -1,0 +1,851 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr49f_sharedcommondataserviceforapps_cbd97"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "When_a_row_is_added,_modified_or_deleted": {
+          "metadata": {
+            "operationMetadataId": "ff8a6857-bc83-4142-afde-a665d605f26e"
+          },
+          "type": "OpenApiConnectionWebhook",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "SubscribeWebhookTrigger",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "subscriptionRequest/message": 7,
+              "subscriptionRequest/entityname": "cr41e_effortcalculation",
+              "subscriptionRequest/scope": 4,
+              "subscriptionRequest/filterexpression": "cr41e_timeestimationhours ne null and cr6b0_rateid ne null"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      },
+      "actions": {
+        "Get_SA": {
+          "runAfter": {
+            "Get_Project": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "581e9823-48a0-41c2-954a-d9dc3c0d8027"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "GetItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "entityName": "cr6b0_specializationareas",
+              "recordId": "@triggerOutputs()?['body/cr6b0_said']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Get_Role": {
+          "runAfter": {
+            "Get_SA": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "f42e6209-9ede-4fb3-89a6-61196b2e2d5e"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "GetItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "entityName": "cr6b0_rates",
+              "recordId": "@triggerOutputs()?['body/cr6b0_rateid']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Get_Project": {
+          "runAfter": {
+            "Initialize_variable_2": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "c8606f92-413c-4d83-a5a1-f24775065484"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "GetItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "entityName": "cr6b0_projects",
+              "recordId": "@triggerOutputs()?['body/cr6b0_projectguid']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Initialize_variable_2": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "4f5cd883-b82e-4554-95af-bbcec1cfc98d"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "totalhours",
+                "type": "float",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "Condition_7": {
+          "actions": {
+            "Condition": {
+              "actions": {
+                "List_Effort_Calculation": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "a39f35e7-4ff3-4054-af5b-b58ebf6f328d"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "ListRecords",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                    },
+                    "parameters": {
+                      "entityName": "cr41e_effortcalculations",
+                      "$filter": "cr6b0_projectidentifier eq '@{triggerOutputs()?['body/cr6b0_projectidentifier']}' and cr6b0_phasenametext eq '@{triggerOutputs()?['body/cr6b0_phasenametext']}' and cr6b0_rateid eq '@{triggerOutputs()?['body/cr6b0_rateid']}' and cr6b0_saguid eq  '@{triggerOutputs()?['body/cr6b0_saguid']}'"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Apply_to_each_2": {
+                  "foreach": "@outputs('List_Effort_Calculation')?['body/value']",
+                  "actions": {
+                    "Increment_variable": {
+                      "runAfter": {},
+                      "metadata": {
+                        "operationMetadataId": "f3d3e7d3-dd40-4503-ad1e-5233a38514bc"
+                      },
+                      "type": "IncrementVariable",
+                      "inputs": {
+                        "name": "totalhours",
+                        "value": "@items('Apply_to_each_2')?['cr41e_timeestimationhours']"
+                      }
+                    }
+                  },
+                  "runAfter": {
+                    "List_Effort_Calculation": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "89035b25-a305-4ddb-93d5-cbadbfeec3c9"
+                  },
+                  "type": "Foreach"
+                },
+                "Apply_to_each": {
+                  "foreach": "@outputs('List_Effort_Breakdown')?['body/value']",
+                  "actions": {
+                    "Update_a_row": {
+                      "runAfter": {},
+                      "metadata": {
+                        "operationMetadataId": "694c5af0-7912-4efa-96e6-170fbf543520"
+                      },
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connectionName": "shared_commondataserviceforapps",
+                          "operationId": "UpdateOnlyRecord",
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                        },
+                        "parameters": {
+                          "entityName": "cr41e_effortbreakdowns",
+                          "recordId": "@items('Apply_to_each')?['cr41e_effortbreakdownid']",
+                          "item/statecode": "@triggerOutputs()?['body/statecode']",
+                          "item/cr41e_sumoftotalhours": "@variables('totalhours')"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    }
+                  },
+                  "runAfter": {
+                    "Apply_to_each_2": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "c695e9ea-4ecc-45cf-800a-892a0b0eec62"
+                  },
+                  "type": "Foreach"
+                },
+                "List_All_Effort_Breakdowns": {
+                  "runAfter": {
+                    "Apply_to_each": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "cbdf0907-bca0-4caf-9037-c25144c5cd40"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "ListRecords",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                    },
+                    "parameters": {
+                      "entityName": "cr41e_effortbreakdowns",
+                      "$filter": "cr6b0_projectguid eq @{triggerOutputs()?['body/cr6b0_projectguid']}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation": {
+                  "foreach": "@outputs('List_All_Effort_Breakdowns')?['body/value']",
+                  "actions": {
+                    "List_Effort_Calculations_per_Effort_Breakdown": {
+                      "runAfter": {},
+                      "metadata": {
+                        "operationMetadataId": "88c377d4-e5a9-44f0-88e1-897b12570be8"
+                      },
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connectionName": "shared_commondataserviceforapps",
+                          "operationId": "ListRecords",
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                        },
+                        "parameters": {
+                          "entityName": "cr41e_effortcalculations",
+                          "$filter": "cr6b0_projectguid eq @{items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation')?['cr6b0_projectguid']} and cr6b0_rateid eq @{items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation')?['cr6b0_roleid']} and cr6b0_phaseid eq @{if(empty(items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation')?['cr6b0_phaseid']),'null',items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation')?['cr6b0_phaseid'])} and statecode eq 0 and cr6b0_saguid eq @{items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation')?['cr6b0_saguid']}"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    },
+                    "Condition_2": {
+                      "actions": {
+                        "Delete_a_row": {
+                          "runAfter": {},
+                          "metadata": {
+                            "operationMetadataId": "79c1f5df-e984-4053-9b3d-e3d688ced3da"
+                          },
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "host": {
+                              "connectionName": "shared_commondataserviceforapps",
+                              "operationId": "DeleteRecord",
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                            },
+                            "parameters": {
+                              "entityName": "cr41e_effortbreakdowns",
+                              "recordId": "@items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation')?['cr41e_effortbreakdownid']"
+                            },
+                            "authentication": "@parameters('$authentication')"
+                          }
+                        }
+                      },
+                      "runAfter": {
+                        "List_Effort_Calculations_per_Effort_Breakdown": [
+                          "Succeeded"
+                        ]
+                      },
+                      "expression": {
+                        "lessOrEquals": [
+                          "@length(outputs('List_Effort_Calculations_per_Effort_Breakdown')?['body/value'])",
+                          0
+                        ]
+                      },
+                      "metadata": {
+                        "operationMetadataId": "69ad8e25-0802-4abd-bc09-8804587f6fba"
+                      },
+                      "type": "If"
+                    }
+                  },
+                  "runAfter": {
+                    "List_All_Effort_Breakdowns": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "d3977ad6-c757-423c-a379-ee88939f2bf5"
+                  },
+                  "type": "Foreach"
+                }
+              },
+              "runAfter": {
+                "List_Effort_Breakdown": [
+                  "Succeeded"
+                ]
+              },
+              "else": {
+                "actions": {
+                  "Add_a_new_row": {
+                    "runAfter": {},
+                    "metadata": {
+                      "operationMetadataId": "d8b65da0-cd94-4b26-b618-40d221669ab2"
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "connectionName": "shared_commondataserviceforapps",
+                        "operationId": "CreateRecord",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                      },
+                      "parameters": {
+                        "entityName": "cr41e_effortbreakdowns",
+                        "item/cr41e_Project@odata.bind": "@outputs('Get_Project')?['body/@odata.id']",
+                        "item/cr6b0_ProjectPhase@odata.bind": "@outputs('Get_Phases')?['body/@odata.id']",
+                        "item/cr6b0_Rate@odata.bind": "@outputs('Get_Role')?['body/@odata.id']",
+                        "item/cr6b0_SA@odata.bind": "@outputs('Get_SA')?['body/@odata.id']",
+                        "item/cr41e_sumoftotalhours": "@triggerOutputs()?['body/cr41e_timeestimationhours']"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    }
+                  },
+                  "List_All_Effort_Breakdowns_2": {
+                    "runAfter": {
+                      "Add_a_new_row": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "cbdf0907-bca0-4caf-9037-c25144c5cd40"
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "connectionName": "shared_commondataserviceforapps",
+                        "operationId": "ListRecords",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                      },
+                      "parameters": {
+                        "entityName": "cr41e_effortbreakdowns",
+                        "$filter": "cr6b0_projectguid eq @{triggerOutputs()?['body/cr6b0_projectguid']}"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    }
+                  },
+                  "Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_2": {
+                    "foreach": "@outputs('List_All_Effort_Breakdowns_2')?['body/value']",
+                    "actions": {
+                      "List_Effort_Calculations_per_Effort_Breakdown_2": {
+                        "runAfter": {},
+                        "metadata": {
+                          "operationMetadataId": "88c377d4-e5a9-44f0-88e1-897b12570be8"
+                        },
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "connectionName": "shared_commondataserviceforapps",
+                            "operationId": "ListRecords",
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                          },
+                          "parameters": {
+                            "entityName": "cr41e_effortcalculations",
+                            "$filter": "cr6b0_projectguid eq @{items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_2')?['cr6b0_projectguid']} and cr6b0_rateid eq @{items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_2')?['cr6b0_roleid']} and cr6b0_phaseid eq @{if(empty(items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_2')?['cr6b0_phaseid']),'null',items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_2')?['cr6b0_phaseid'])} and statecode eq 0  and cr6b0_saguid eq @{items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_2')?['cr6b0_saguid']}"
+                          },
+                          "authentication": "@parameters('$authentication')"
+                        }
+                      },
+                      "Condition_3": {
+                        "actions": {
+                          "Delete_a_row_2": {
+                            "runAfter": {},
+                            "metadata": {
+                              "operationMetadataId": "79c1f5df-e984-4053-9b3d-e3d688ced3da"
+                            },
+                            "type": "OpenApiConnection",
+                            "inputs": {
+                              "host": {
+                                "connectionName": "shared_commondataserviceforapps",
+                                "operationId": "DeleteRecord",
+                                "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                              },
+                              "parameters": {
+                                "entityName": "cr41e_effortbreakdowns",
+                                "recordId": "@items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_2')?['cr41e_effortbreakdownid']"
+                              },
+                              "authentication": "@parameters('$authentication')"
+                            }
+                          }
+                        },
+                        "runAfter": {
+                          "List_Effort_Calculations_per_Effort_Breakdown_2": [
+                            "Succeeded"
+                          ]
+                        },
+                        "expression": {
+                          "lessOrEquals": [
+                            "@length(outputs('List_Effort_Calculations_per_Effort_Breakdown_2')?['body/value'])",
+                            0
+                          ]
+                        },
+                        "metadata": {
+                          "operationMetadataId": "69ad8e25-0802-4abd-bc09-8804587f6fba"
+                        },
+                        "type": "If"
+                      }
+                    },
+                    "runAfter": {
+                      "List_All_Effort_Breakdowns_2": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "d3977ad6-c757-423c-a379-ee88939f2bf5"
+                    },
+                    "type": "Foreach"
+                  }
+                }
+              },
+              "expression": {
+                "greater": [
+                  "@length(outputs('List_Effort_Breakdown')?['body/value'])",
+                  0
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "e82eb452-17ac-4f3c-9a59-c89a1243ceda"
+              },
+              "type": "If"
+            },
+            "Get_Phases": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "aef0b909-31ed-4dbd-b4e3-a487a4310b5e"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "GetItem",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_projectphases",
+                  "recordId": "@triggerOutputs()?['body/cr6b0_phaseid']"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "List_Effort_Breakdown": {
+              "runAfter": {
+                "Get_Phases": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "a39f35e7-4ff3-4054-af5b-b58ebf6f328d"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr41e_effortbreakdowns",
+                  "$filter": "cr6b0_projectidentifier eq '@{triggerOutputs()?['body/cr6b0_projectidentifier']}' and cr6b0_phasename eq '@{triggerOutputs()?['body/cr6b0_phasenametext']}' and cr6b0_roleid eq '@{triggerOutputs()?['body/cr6b0_rateid']}' and cr6b0_saguid eq '@{triggerOutputs()?['body/cr6b0_saguid']}'"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "runAfter": {
+            "Get_Role": [
+              "Succeeded"
+            ]
+          },
+          "else": {
+            "actions": {
+              "List_Effort_Breakdown_2": {
+                "runAfter": {},
+                "metadata": {
+                  "operationMetadataId": "a39f35e7-4ff3-4054-af5b-b58ebf6f328d"
+                },
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "connectionName": "shared_commondataserviceforapps",
+                    "operationId": "ListRecords",
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                  },
+                  "parameters": {
+                    "entityName": "cr41e_effortbreakdowns",
+                    "$filter": "cr6b0_projectidentifier eq '@{triggerOutputs()?['body/cr6b0_projectidentifier']}' and cr6b0_roleid eq '@{triggerOutputs()?['body/cr6b0_rateid']}' and cr6b0_saguid eq '@{triggerOutputs()?['body/cr6b0_saguid']}' and cr6b0_phaseid eq null"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                }
+              },
+              "Condition_8": {
+                "actions": {
+                  "List_Effort_Calculation_3": {
+                    "runAfter": {},
+                    "metadata": {
+                      "operationMetadataId": "a39f35e7-4ff3-4054-af5b-b58ebf6f328d"
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "connectionName": "shared_commondataserviceforapps",
+                        "operationId": "ListRecords",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                      },
+                      "parameters": {
+                        "entityName": "cr41e_effortcalculations",
+                        "$filter": "cr6b0_projectidentifier eq '@{triggerOutputs()?['body/cr6b0_projectidentifier']}' and cr6b0_rateid eq '@{triggerOutputs()?['body/cr6b0_rateid']}' and cr6b0_saguid eq  '@{triggerOutputs()?['body/cr6b0_saguid']}' and cr6b0_phaseid eq null"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    }
+                  },
+                  "Apply_to_each_5": {
+                    "foreach": "@outputs('List_Effort_Calculation_3')?['body/value']",
+                    "actions": {
+                      "Increment_variable_3": {
+                        "runAfter": {},
+                        "metadata": {
+                          "operationMetadataId": "f3d3e7d3-dd40-4503-ad1e-5233a38514bc"
+                        },
+                        "type": "IncrementVariable",
+                        "inputs": {
+                          "name": "totalhours",
+                          "value": "@items('Apply_to_each_5')?['cr41e_timeestimationhours']"
+                        }
+                      }
+                    },
+                    "runAfter": {
+                      "List_Effort_Calculation_3": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "89035b25-a305-4ddb-93d5-cbadbfeec3c9"
+                    },
+                    "type": "Foreach"
+                  },
+                  "Apply_to_each_6": {
+                    "foreach": "@outputs('List_Effort_Breakdown_2')?['body/value']",
+                    "actions": {
+                      "Update_a_row_3": {
+                        "runAfter": {},
+                        "metadata": {
+                          "operationMetadataId": "694c5af0-7912-4efa-96e6-170fbf543520"
+                        },
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "connectionName": "shared_commondataserviceforapps",
+                            "operationId": "UpdateOnlyRecord",
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                          },
+                          "parameters": {
+                            "entityName": "cr41e_effortbreakdowns",
+                            "recordId": "@items('Apply_to_each_6')?['cr41e_effortbreakdownid']",
+                            "item/statecode": "@triggerOutputs()?['body/statecode']",
+                            "item/cr41e_sumoftotalhours": "@variables('totalhours')"
+                          },
+                          "authentication": "@parameters('$authentication')"
+                        }
+                      }
+                    },
+                    "runAfter": {
+                      "Apply_to_each_5": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "c695e9ea-4ecc-45cf-800a-892a0b0eec62"
+                    },
+                    "type": "Foreach"
+                  },
+                  "List_All_Effort_Breakdowns_6": {
+                    "runAfter": {
+                      "Apply_to_each_6": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "cbdf0907-bca0-4caf-9037-c25144c5cd40"
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "connectionName": "shared_commondataserviceforapps",
+                        "operationId": "ListRecords",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                      },
+                      "parameters": {
+                        "entityName": "cr41e_effortbreakdowns",
+                        "$filter": "cr6b0_projectguid eq @{triggerOutputs()?['body/cr6b0_projectguid']}"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    }
+                  },
+                  "Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_6": {
+                    "foreach": "@outputs('List_All_Effort_Breakdowns_6')?['body/value']",
+                    "actions": {
+                      "List_Effort_Calculations_per_Effort_Breakdown_6": {
+                        "runAfter": {},
+                        "metadata": {
+                          "operationMetadataId": "88c377d4-e5a9-44f0-88e1-897b12570be8"
+                        },
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "connectionName": "shared_commondataserviceforapps",
+                            "operationId": "ListRecords",
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                          },
+                          "parameters": {
+                            "entityName": "cr41e_effortcalculations",
+                            "$filter": "cr6b0_projectguid eq @{items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_6')?['cr6b0_projectguid']} and cr6b0_rateid eq @{items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_6')?['cr6b0_roleid']} and statecode eq 0 and cr6b0_saguid eq  @{items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_6')?['cr6b0_saguid']} and cr6b0_phaseid eq @{if(empty(items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_6')?['cr6b0_phaseid']),'null',items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_6')?['cr6b0_phaseid'])} "
+                          },
+                          "authentication": "@parameters('$authentication')"
+                        }
+                      },
+                      "Condition_10": {
+                        "actions": {
+                          "Delete_a_row_6": {
+                            "runAfter": {},
+                            "metadata": {
+                              "operationMetadataId": "79c1f5df-e984-4053-9b3d-e3d688ced3da"
+                            },
+                            "type": "OpenApiConnection",
+                            "inputs": {
+                              "host": {
+                                "connectionName": "shared_commondataserviceforapps",
+                                "operationId": "DeleteRecord",
+                                "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                              },
+                              "parameters": {
+                                "entityName": "cr41e_effortbreakdowns",
+                                "recordId": "@items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_6')?['cr41e_effortbreakdownid']"
+                              },
+                              "authentication": "@parameters('$authentication')"
+                            }
+                          }
+                        },
+                        "runAfter": {
+                          "List_Effort_Calculations_per_Effort_Breakdown_6": [
+                            "Succeeded"
+                          ]
+                        },
+                        "expression": {
+                          "lessOrEquals": [
+                            "@length(outputs('List_Effort_Calculations_per_Effort_Breakdown_6')?['body/value'])",
+                            0
+                          ]
+                        },
+                        "metadata": {
+                          "operationMetadataId": "69ad8e25-0802-4abd-bc09-8804587f6fba"
+                        },
+                        "type": "If"
+                      }
+                    },
+                    "runAfter": {
+                      "List_All_Effort_Breakdowns_6": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "d3977ad6-c757-423c-a379-ee88939f2bf5"
+                    },
+                    "type": "Foreach"
+                  }
+                },
+                "runAfter": {
+                  "List_Effort_Breakdown_2": [
+                    "Succeeded"
+                  ]
+                },
+                "else": {
+                  "actions": {
+                    "Add_a_new_row_3": {
+                      "runAfter": {},
+                      "metadata": {
+                        "operationMetadataId": "d8b65da0-cd94-4b26-b618-40d221669ab2"
+                      },
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connectionName": "shared_commondataserviceforapps",
+                          "operationId": "CreateRecord",
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                        },
+                        "parameters": {
+                          "entityName": "cr41e_effortbreakdowns",
+                          "item/cr41e_Project@odata.bind": "@outputs('Get_Project')?['body/@odata.id']",
+                          "item/cr6b0_Rate@odata.bind": "@outputs('Get_Role')?['body/@odata.id']",
+                          "item/cr6b0_SA@odata.bind": "@outputs('Get_SA')?['body/@odata.id']",
+                          "item/cr41e_sumoftotalhours": "@triggerOutputs()?['body/cr41e_timeestimationhours']"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    },
+                    "List_All_Effort_Breakdowns_5": {
+                      "runAfter": {
+                        "Add_a_new_row_3": [
+                          "Succeeded"
+                        ]
+                      },
+                      "metadata": {
+                        "operationMetadataId": "cbdf0907-bca0-4caf-9037-c25144c5cd40"
+                      },
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connectionName": "shared_commondataserviceforapps",
+                          "operationId": "ListRecords",
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                        },
+                        "parameters": {
+                          "entityName": "cr41e_effortbreakdowns",
+                          "$filter": "cr6b0_projectguid eq @{triggerOutputs()?['body/cr6b0_projectguid']} "
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    },
+                    "Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_5": {
+                      "foreach": "@outputs('List_All_Effort_Breakdowns_5')?['body/value']",
+                      "actions": {
+                        "List_Effort_Calculations_per_Effort_Breakdown_5": {
+                          "runAfter": {},
+                          "metadata": {
+                            "operationMetadataId": "88c377d4-e5a9-44f0-88e1-897b12570be8"
+                          },
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "host": {
+                              "connectionName": "shared_commondataserviceforapps",
+                              "operationId": "ListRecords",
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                            },
+                            "parameters": {
+                              "entityName": "cr41e_effortcalculations",
+                              "$filter": "cr6b0_projectguid eq @{items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_5')?['cr6b0_projectguid']} and cr6b0_rateid eq @{items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_5')?['cr6b0_roleid']}  and cr6b0_saguid eq  @{items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_5')?['cr6b0_saguid']} and cr6b0_phaseid eq @{if(empty(items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_5')?['cr6b0_phaseid']),'null',items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_5')?['cr6b0_phaseid'])}  and statecode eq 0 "
+                            },
+                            "authentication": "@parameters('$authentication')"
+                          }
+                        },
+                        "Condition_9": {
+                          "actions": {
+                            "Delete_a_row_5": {
+                              "runAfter": {},
+                              "metadata": {
+                                "operationMetadataId": "79c1f5df-e984-4053-9b3d-e3d688ced3da"
+                              },
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "host": {
+                                  "connectionName": "shared_commondataserviceforapps",
+                                  "operationId": "DeleteRecord",
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                                },
+                                "parameters": {
+                                  "entityName": "cr41e_effortbreakdowns",
+                                  "recordId": "@items('Delete_Effort_Breakdowns_with_no_values_in_Effort_Calculation_5')?['cr41e_effortbreakdownid']"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            }
+                          },
+                          "runAfter": {
+                            "List_Effort_Calculations_per_Effort_Breakdown_5": [
+                              "Succeeded"
+                            ]
+                          },
+                          "expression": {
+                            "lessOrEquals": [
+                              "@length(outputs('List_Effort_Calculations_per_Effort_Breakdown_5')?['body/value'])",
+                              0
+                            ]
+                          },
+                          "metadata": {
+                            "operationMetadataId": "69ad8e25-0802-4abd-bc09-8804587f6fba"
+                          },
+                          "type": "If"
+                        }
+                      },
+                      "runAfter": {
+                        "List_All_Effort_Breakdowns_5": [
+                          "Succeeded"
+                        ]
+                      },
+                      "metadata": {
+                        "operationMetadataId": "d3977ad6-c757-423c-a379-ee88939f2bf5"
+                      },
+                      "type": "Foreach"
+                    }
+                  }
+                },
+                "expression": {
+                  "greater": [
+                    "@length(outputs('List_Effort_Breakdown_2')?['body/value'])",
+                    0
+                  ]
+                },
+                "metadata": {
+                  "operationMetadataId": "e82eb452-17ac-4f3c-9a59-c89a1243ceda"
+                },
+                "type": "If"
+              }
+            }
+          },
+          "expression": {
+            "not": {
+              "equals": [
+                "@triggerOutputs()?['body/cr6b0_phaseid']",
+                "@null"
+              ]
+            }
+          },
+          "metadata": {
+            "operationMetadataId": "615f0efe-ba19-4bd0-99a0-93668346c5ad"
+          },
+          "type": "If"
+        }
+      }
+    },
+    "templateName": ""
+  },
+  "schemaVersion": "1.0.0.0"
+}

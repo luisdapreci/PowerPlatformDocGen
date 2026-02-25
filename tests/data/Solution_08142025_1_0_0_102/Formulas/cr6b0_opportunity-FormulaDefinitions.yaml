@@ -1,0 +1,2 @@
+cr49f_salesopptyurl: |-
+    =Concatenate("https://org8cfa1dc6.crm.dynamics.com/main.aspx?appid=5cf9447a-e40d-ee11-8f6d-00224802aaea&pagetype=entityrecord&etn=opportunity&id=",cr6b0_opportunityidentificationlegacy)

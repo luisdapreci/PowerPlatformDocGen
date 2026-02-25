@@ -1,0 +1,10 @@
+function showHideSubgridBasedOnField(executionContext) {
+    var formContext = executionContext.getFormContext();
+    var fieldName = formContext.getAttribute("cr6b0_enableprojecttracker").getValue(); // 
+console.log("The value of 'cr6b0_enableprojecttracker' is: ", fieldName);
+    if (fieldName == 1) {
+        formContext.getControl("Subgrid_ChildProject").setVisible(true); // Hide the subgrid
+    } else {
+        formContext.getControl("Subgrid_ChildProject").setVisible(false); // Show the subgrid
+    }
+}

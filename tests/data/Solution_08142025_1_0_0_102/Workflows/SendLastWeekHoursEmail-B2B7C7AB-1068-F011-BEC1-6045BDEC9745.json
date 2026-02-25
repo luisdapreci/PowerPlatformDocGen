@@ -1,0 +1,548 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {},
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      },
+      "shared_office365_1": {
+        "runtimeSource": "embedded",
+        "connection": {},
+        "api": {
+          "name": "shared_office365"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "Recurrence": {
+          "recurrence": {
+            "frequency": "Week",
+            "interval": 1,
+            "timeZone": "Pacific Standard Time",
+            "schedule": {
+              "weekDays": [
+                "Monday"
+              ],
+              "hours": [
+                "8"
+              ],
+              "minutes": [
+                0
+              ]
+            }
+          },
+          "metadata": {
+            "operationMetadataId": "f24074da-f43e-4303-8d4d-82f9477666c9"
+          },
+          "type": "Recurrence"
+        }
+      },
+      "actions": {
+        "Initialize_variable_-_Start_Date": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "a16f2701-98f7-483c-95b5-ce1fef179635"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "StartDate",
+                "type": "String",
+                "value": "@{subtractFromTime(utcNow(), 7, 'Day','MM/dd/yyyy')}"
+              }
+            ]
+          }
+        },
+        "Initialize_variable_-_Week_Dates": {
+          "runAfter": {
+            "Initialize_variable_-_Start_Date": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "6c1885d9-e3d0-4755-8f7e-b7a9e40ff2d2"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Week Dates",
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "Compose_-_Week": {
+          "runAfter": {
+            "Initialize_variable_-_Week_Dates": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "2b5d0340-4ee5-4529-afb5-c641e0ecd58f"
+          },
+          "type": "Compose",
+          "inputs": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ]
+        },
+        "Apply_to_each": {
+          "foreach": "@outputs('Compose_-_Week')",
+          "actions": {
+            "Append_to_array_variable_-_Week_Dates": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "ba530ab6-2c66-4d69-89ce-479b1e71a2ae"
+              },
+              "type": "AppendToArrayVariable",
+              "inputs": {
+                "name": "Week Dates",
+                "value": "@formatDateTime(addDays(variables('StartDate'), items('Apply_to_each')), 'yyyy-MM-dd')"
+              }
+            }
+          },
+          "runAfter": {
+            "Compose_-_Week": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "0b2b4e3f-7e41-4133-8b2b-d243340c1e79"
+          },
+          "type": "Foreach"
+        },
+        "List_rows_-_Consultants": {
+          "runAfter": {
+            "Apply_to_each_2": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "986d1fbd-e40a-48e3-9fd1-ab0348dca8cf"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "ListRecords",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "entityName": "cr6b0_consultants",
+              "$filter": "cr6b0_employeestatus eq true and _cr6b0_specializationarea_value ne @{variables('P@N')} and _cr6b0_specializationarea_value ne @{variables('FandP')} and not contains(cr6b0_consultantlevel, 'Partner') and not contains(cr6b0_consultantlevel, 'Business') and not contains(cr6b0_consultantlevel, 'RB') and not contains(cr6b0_consultantlevel, 'Chief') and not contains(cr6b0_consultantlevel, 'Marketing') and not contains(cr6b0_consultantlevel, 'Resourcing')"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "List_rows_-_Specialization_Areas": {
+          "runAfter": {
+            "Initialize_variable_-_Hours_by_Day_Temp": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "feb5a9eb-bbf0-4b0b-83d0-0780bcedd663"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "ListRecords",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "entityName": "cr6b0_specializationareas",
+              "$filter": "cr6b0_specializationareaname eq 'People@Nextant' or cr6b0_specializationareaname eq 'Finance & Planning'",
+              "$top": 2
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Initialize_variable_-_P@N_ID": {
+          "runAfter": {
+            "Apply_to_each": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "f00f171f-39b3-4171-a828-c905123fd8df"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "P@N",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "Initialize_variable_-_FandP_ID": {
+          "runAfter": {
+            "Initialize_variable_-_P@N_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "9088cc07-d321-44c2-b005-e1fba9fa03b6"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "FandP",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "Apply_to_each_2": {
+          "foreach": "@outputs('List_rows_-_Specialization_Areas')?['body/value']",
+          "actions": {
+            "Condition": {
+              "actions": {
+                "Set_variable_-_FandP_ID": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "152ac4d8-f779-411c-8f41-d95242f6b95c"
+                  },
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "FandP",
+                    "value": "@items('Apply_to_each_2')?['cr6b0_specializationareaid']"
+                  }
+                }
+              },
+              "runAfter": {},
+              "else": {
+                "actions": {
+                  "Set_variable_-_P@N_ID": {
+                    "runAfter": {},
+                    "metadata": {
+                      "operationMetadataId": "1f66ac52-daea-45c3-8c7d-89df601985e3"
+                    },
+                    "type": "SetVariable",
+                    "inputs": {
+                      "name": "P@N",
+                      "value": "@items('Apply_to_each_2')?['cr6b0_specializationareaid']"
+                    }
+                  }
+                }
+              },
+              "expression": {
+                "equals": [
+                  "@items('Apply_to_each_2')?['cr6b0_specializationareaname']",
+                  "Finance & Planning"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "3264fefb-2105-419c-a4a6-c9e9c2f44b11"
+              },
+              "type": "If"
+            }
+          },
+          "runAfter": {
+            "List_rows_-_Specialization_Areas": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "beb1e1e8-e6ce-4e11-8391-b551d9221872"
+          },
+          "type": "Foreach",
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 1
+            }
+          }
+        },
+        "Apply_to_each_3": {
+          "foreach": "@outputs('List_rows_-_Consultants')?['body/value']",
+          "actions": {
+            "List_rows_-_Hours": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "c6a2ba76-cbea-469e-ac12-3158af1476e1"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_hourses",
+                  "$filter": "_cr6b0_consultantname_value eq @{items('Apply_to_each_3')?['cr6b0_consultantid']}"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Filter_array_-_Last_Week_Hours": {
+              "runAfter": {
+                "List_rows_-_Hours": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "c758fabb-c5e0-4e0d-b051-e6019d6afca2"
+              },
+              "type": "Query",
+              "inputs": {
+                "from": "@outputs('List_rows_-_Hours')?['body/value']",
+                "where": "@equals(contains(variables('Week Dates'), formatDateTime(item()?['cr6b0_workeddate'], 'yyyy-MM-dd')), true)"
+              }
+            },
+            "Apply_to_each_4": {
+              "foreach": "@variables('Week Dates')",
+              "actions": {
+                "Compose_-_Name_of_the_Day": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "9a7a4263-426f-4be3-9737-48a1e5a57b4a"
+                  },
+                  "type": "Compose",
+                  "inputs": "@formatDateTime(items('Apply_to_each_4'), 'dddd')"
+                },
+                "Filter_array_-_Hours_by_Date": {
+                  "runAfter": {
+                    "Compose_-_Name_of_the_Day": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "fcd937fc-8d11-4586-9246-a1cac9b478e8"
+                  },
+                  "type": "Query",
+                  "inputs": {
+                    "from": "@body('Filter_array_-_Last_Week_Hours')",
+                    "where": "@equals(formatDateTime(item()['cr6b0_workeddate'], 'yyyy-MM-dd'), items('Apply_to_each_4'))"
+                  }
+                },
+                "Apply_to_each_5": {
+                  "foreach": "@body('Filter_array_-_Hours_by_Date')",
+                  "actions": {
+                    "Increment_variable_-_Hours_by_Day_Temp": {
+                      "runAfter": {},
+                      "metadata": {
+                        "operationMetadataId": "6d2b56d0-4eb9-422c-b309-d9c2e25b82c3"
+                      },
+                      "type": "IncrementVariable",
+                      "inputs": {
+                        "name": "Hours by Day Temp",
+                        "value": "@items('Apply_to_each_5')?['cr6b0_workedhours']"
+                      }
+                    }
+                  },
+                  "runAfter": {
+                    "Filter_array_-_Hours_by_Date": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "4b187e5c-384d-4e74-9d9c-2e711b6f765e"
+                  },
+                  "type": "Foreach"
+                },
+                "Append_to_array_variable_-_Day_Totals": {
+                  "runAfter": {
+                    "Apply_to_each_5": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "b73f5d3c-876d-4c50-89a3-aa6db945a62a"
+                  },
+                  "type": "AppendToArrayVariable",
+                  "inputs": {
+                    "name": "Day Totals",
+                    "value": "@json(concat('{\"day\":\"', outputs('Compose_-_Name_of_the_Day'), '\", \"hours\":', string(variables('Hours by Day Temp')), '}'))\r\n"
+                  }
+                },
+                "Set_variable_-_Hours_by_Day_Temp": {
+                  "runAfter": {
+                    "Append_to_array_variable_-_Day_Totals": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "90d082a6-8833-4ded-b2e1-7aab4f34b75c"
+                  },
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "Hours by Day Temp",
+                    "value": 0
+                  }
+                }
+              },
+              "runAfter": {
+                "Filter_array_-_Last_Week_Hours": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "20886ea4-2618-42d9-b2bd-812b5aaf17f5"
+              },
+              "type": "Foreach"
+            },
+            "Set_variable_-_Day_Totals": {
+              "runAfter": {
+                "Condition_2": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "d21cacd4-643b-4660-8655-9aecfc7aa022"
+              },
+              "type": "SetVariable",
+              "inputs": {
+                "name": "Day Totals",
+                "value": "@null"
+              }
+            },
+            "Condition_2": {
+              "actions": {
+                "Send_an_email_(V2)_-_Has_Hours": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "78c84828-8d4f-4f1e-a2ce-1fc6aa0e2435"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_office365_1",
+                      "operationId": "SendEmailV2",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                    },
+                    "parameters": {
+                      "emailMessage/To": "@items('Apply_to_each_3')?['cr6b0_email']",
+                      "emailMessage/Subject": "Last Week Submitted Hours",
+                      "emailMessage/Body": " Hi @{items('Apply_to_each_3')?['cr6b0_consultantname']},\n<br> <br>Below is the summary of the hours you submitted last week. In case, you want to make any changes please visit <a href=https://apps.powerapps.com/play/e/bce2c94a-b2b3-e487-b368-b8d7c931f90b/a/88a20e8f-6e16-4f18-be59-42fae963365c?tenantId=d232b207-f86f-4fba-8891-ccbf30b12898&hint=14ce49d0-50ac-4275-868c-81e74a2624ef&source=sharebutton&sourcetime=1753302342435#>Time Tracking App</a> <br><br>\n<b><U>Details:</U></b>\n<br><b>Week:</b> @{variables('StartDate')} - @{formatDateTime(last(variables('Week Dates')), 'MM/dd/yyyy')}\n<br>\n<br>\n<table border=\"1\">\n<tr>\n<th>Consultant</th><th>Monday</th>\n<th>Tuesday</th>\n<th>Wednesday</th>\n<th>Thursday</th>\n<th>Friday</th>\n<th>Saturday</th>\n<th>Sunday</th>\n</tr>\n<tr>\n<td>@{items('Apply_to_each_3')?['cr6b0_consultantname']}</td>\n<td>@{variables('Day Totals')[0]['hours']}</td>\n<td>@{variables('Day Totals')[1]['hours']}</td>\n<td>@{variables('Day Totals')[2]['hours']}</td>\n<td>@{variables('Day Totals')[3]['hours']}</td>\n<td>@{variables('Day Totals')[4]['hours']}</td>\n<td>@{variables('Day Totals')[5]['hours']}</td>\n<td>@{variables('Day Totals')[6]['hours']}</td>\n</tr>\n</table>\n<br><br>\nNextant Team",
+                      "emailMessage/From": "myportal@nextant.com",
+                      "emailMessage/Importance": "Normal"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              },
+              "runAfter": {
+                "Apply_to_each_4": [
+                  "Succeeded"
+                ]
+              },
+              "else": {
+                "actions": {
+                  "Send_an_email_(V2)_-_No_Hours": {
+                    "runAfter": {},
+                    "metadata": {
+                      "operationMetadataId": "91ec8358-0202-4894-af93-298c6f34b4cd"
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "connectionName": "shared_office365_1",
+                        "operationId": "SendEmailV2",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                      },
+                      "parameters": {
+                        "emailMessage/To": "@items('Apply_to_each_3')?['cr6b0_email']",
+                        "emailMessage/Subject": "Last Week Submitted Hours",
+                        "emailMessage/Body": "<p>Hi @{items('Apply_to_each_3')?['cr6b0_consultantname']},<br>\n<br>\nPlease visit <a href=\"https://apps.powerapps.com/play/e/bce2c94a-b2b3-e487-b368-b8d7c931f90b/a/88a20e8f-6e16-4f18-be59-42fae963365c?tenantId=d232b207-f86f-4fba-8891-ccbf30b12898&amp;hint=14ce49d0-50ac-4275-868c-81e74a2624ef&amp;source=sharebutton&amp;sourcetime=1753302342435#\">Time Tracking App</a> to submit your time card for week starting on: @{variables('StartDate')}<br>\n<br>\n<br>\nNextant Team</p>",
+                        "emailMessage/From": "myportal@nextant.com",
+                        "emailMessage/Importance": "Normal"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    }
+                  }
+                }
+              },
+              "expression": {
+                "greater": [
+                  "@length(body('Filter_array_-_Last_Week_Hours'))",
+                  0
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "db4aa4bb-4995-4d14-8124-7d1288af2888"
+              },
+              "type": "If"
+            }
+          },
+          "runAfter": {
+            "List_rows_-_Consultants": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "3646750e-2eff-4944-8fd5-cafb39e9ee61"
+          },
+          "type": "Foreach"
+        },
+        "Initialize_variable_-_Day_Totals": {
+          "runAfter": {
+            "Initialize_variable_-_FandP_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "8793e628-0a62-4ba5-8457-7f505d14265e"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Day Totals",
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "Initialize_variable_-_Hours_by_Day_Temp": {
+          "runAfter": {
+            "Initialize_variable_-_Day_Totals": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "dbf5b2de-ec1f-47d0-aedd-53ceef5380e4"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Hours by Day Temp",
+                "type": "float",
+                "value": 0
+              }
+            ]
+          }
+        }
+      }
+    },
+    "templateName": ""
+  },
+  "schemaVersion": "1.0.0.0"
+}

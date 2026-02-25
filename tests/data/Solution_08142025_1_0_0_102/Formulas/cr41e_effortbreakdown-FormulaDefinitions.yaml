@@ -1,0 +1,8 @@
+cr6b0_numweeks: =WeekNum(cr41e_enddate) - WeekNum(cr41e_startdate)
+cr6b0_phaseid: =Text(cr6b0_ProjectPhase.cr6b0_projectphaseid)
+cr6b0_phasename: =cr6b0_ProjectPhase.cr6b0_phasename
+cr6b0_projectguid: =Text(cr41e_Project.cr6b0_projectid)
+cr6b0_projectidentifier: =cr41e_Project.cr6b0_projectidentifier
+cr6b0_roleid: =Text(cr6b0_Rate.cr6b0_rateid)
+cr6b0_saguid: =Text(cr6b0_SA.cr6b0_specializationareaid)
+cr6b0_specializationareaname: =cr6b0_SA.cr6b0_specializationareaname

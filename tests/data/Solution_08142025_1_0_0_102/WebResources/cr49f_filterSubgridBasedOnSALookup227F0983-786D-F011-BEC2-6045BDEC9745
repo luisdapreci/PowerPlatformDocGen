@@ -1,0 +1,35 @@
+function filterSubgridBasedOnSALookup(executionContext) {
+    var formContext = executionContext.getFormContext();
+    var parentLookupField = formContext.getAttribute("cr6b0_sa"); // Replace with your parent lookup field name
+    var subgridName = "cc_1748967589412"; // Replace with your subgrid name
+
+    var parentLookupValue = parentLookupField.getValue();
+
+    if (parentLookupValue != null && parentLookupValue.length > 0) {
+        var parentId = parentLookupValue[0].id.replace("{", "").replace("}", ""); // Get the ID and remove braces
+        var parentEntityType = parentLookupValue[0].entityType;
+
+        // Construct FetchXML to filter subgrid records
+        var fetchXml = `<fetch version='1.0' mapping='logical'>
+                            <entity name='subgrid_entity_name'> // Replace with the entity name of your subgrid records
+                                <attribute name='subgrid_entity_primary_id' /> // Replace with the primary ID attribute
+                                <filter type='and'>
+                                    <condition attribute='lookup_to_parent_field' operator='eq' value='${parentId}' /> // Replace with the lookup field in subgrid entity that links to parent
+                                </filter>
+                            </entity>
+                        </fetch>`;
+
+        // Apply the filter to the subgrid
+        formContext.getControl(subgridName).setFilterXml(fetchXml);
+        formContext.getControl(subgridName).refresh();
+    } else {
+        // If parent lookup is empty, you might want to show all records or clear the filter
+        var fetchXmlAll = `<fetch version='1.0' mapping='logical'>
+                                <entity name='subgrid_entity_name'>
+                                    <attribute name='subgrid_entity_primary_id' />
+                                </entity>
+                            </fetch>`;
+        formContext.getControl(subgridName).setFilterXml(fetchXmlAll);
+        formContext.getControl(subgridName).refresh();
+    }
+}

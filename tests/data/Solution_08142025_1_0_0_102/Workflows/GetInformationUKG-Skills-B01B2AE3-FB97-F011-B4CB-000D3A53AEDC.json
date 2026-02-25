@@ -1,0 +1,278 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr49f_sharedcommondataserviceforapps_3d59f"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      },
+      "shared_office365": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr41e_sharedoffice365_c6fd2"
+        },
+        "api": {
+          "name": "shared_office365"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "Recurrence": {
+          "recurrence": {
+            "frequency": "Week",
+            "interval": 1,
+            "timeZone": "SA Pacific Standard Time",
+            "schedule": {
+              "weekDays": [
+                "Monday"
+              ],
+              "hours": [
+                "8"
+              ]
+            }
+          },
+          "evaluatedRecurrence": {
+            "frequency": "Week",
+            "interval": 1,
+            "timeZone": "SA Pacific Standard Time",
+            "schedule": {
+              "weekDays": [
+                "Monday"
+              ],
+              "hours": [
+                "8"
+              ]
+            }
+          },
+          "metadata": {
+            "operationMetadataId": "0e0f644a-c59f-4056-91ac-d1748665c464"
+          },
+          "type": "Recurrence"
+        }
+      },
+      "actions": {
+        "Run_a_Child_Flow": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "c31dafae-9f24-4946-a33f-bb163f6a6c39"
+          },
+          "type": "Workflow",
+          "inputs": {
+            "host": {
+              "workflowReferenceName": "ff4367ba-703d-f011-b4cc-7c1e5281f9ed"
+            }
+          }
+        },
+        "HTTP_-_Get_Information_UKG": {
+          "runAfter": {
+            "Send_an_email_(V2)": [
+              "Skipped"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "9172fe9a-b304-4440-afc3-545da602e449"
+          },
+          "type": "Http",
+          "inputs": {
+            "method": "GET",
+            "uri": "https://secure.saashr.com/ta/rest/v2/companies/!6186698/lookup/skills",
+            "headers": {
+              "Accept": "application/json",
+              "Authentication": "Bearer @{body('Run_a_Child_Flow')?['token']}",
+              "Content-Type": "application/json",
+              "Content-length": "365"
+            }
+          }
+        },
+        "Parse_JSON": {
+          "runAfter": {
+            "HTTP_-_Get_Information_UKG": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "c5ab0417-9d02-425c-8aae-8b818bad33bd"
+          },
+          "type": "ParseJson",
+          "inputs": {
+            "content": "@body('HTTP_-_Get_Information_UKG')",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "schedulable": {
+                        "type": "boolean"
+                      },
+                      "id": {
+                        "type": "integer"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "category": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "schedulable",
+                      "id",
+                      "name",
+                      "category"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "Apply_to_each": {
+          "foreach": "@body('Parse_JSON')?['items']",
+          "actions": {
+            "List_rows": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "12b2f09f-53f4-4a4f-ac94-ba91b2b19a1c"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_skills",
+                  "$filter": "cr6b0_skillnames eq '@{items('Apply_to_each')?['name']}'",
+                  "$top": 1
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Apply_to_each_2": {
+              "foreach": "@outputs('List_rows')?['body/value']",
+              "actions": {
+                "Upsert_a_row": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "ef46f932-e773-4d51-9fdb-fd29dad198fc"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "UpdateRecord",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                    },
+                    "parameters": {
+                      "entityName": "cr6b0_skills",
+                      "recordId": "@items('Apply_to_each_2')?['cr6b0_skillid']",
+                      "item/cr6b0_skilldescription": "@items('Apply_to_each')?['category']",
+                      "item/cr6b0_skillidentification": "@items('Apply_to_each')?['id']",
+                      "item/cr6b0_skillnames": "@items('Apply_to_each')?['name']"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              },
+              "runAfter": {
+                "List_rows": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "5401741d-0133-4ef0-92b3-1786f0172718"
+              },
+              "type": "Foreach"
+            }
+          },
+          "runAfter": {
+            "Parse_JSON": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "8944ffb7-9ab1-4b03-ba54-1c95189d9b53"
+          },
+          "type": "Foreach"
+        },
+        "Send_an_email_(V2)": {
+          "runAfter": {
+            "Run_a_Child_Flow": [
+              "Failed",
+              "TimedOut"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "2dfc8cbd-debc-45f3-ba1a-9c25e0a5c440"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_office365",
+              "operationId": "SendEmailV2",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+            },
+            "parameters": {
+              "emailMessage/To": "jrojas@nextant.com;ssangal@nextant.com",
+              "emailMessage/Subject": "Skills flow has failed due to authentication error",
+              "emailMessage/Body": "<p>The Skills flow has failed, pelase review it on the Power Automate site.</p>",
+              "emailMessage/Cc": "emonsalve@nextant.com",
+              "emailMessage/Importance": "Normal"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Send_an_email_(V2)_2": {
+          "runAfter": {
+            "Apply_to_each": [
+              "Failed",
+              "TimedOut"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "b0d3d925-96c1-464e-a319-603d4b95a622"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_office365",
+              "operationId": "SendEmailV2",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+            },
+            "parameters": {
+              "emailMessage/To": "jrojas@nextant.com;ssangal@nextant.com",
+              "emailMessage/Subject": "Skills flow has failed",
+              "emailMessage/Body": "<p>The Skills flow has failed, pelase review it on the Power Automate site.</p>",
+              "emailMessage/Importance": "Normal"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      },
+      "outputs": {}
+    },
+    "templateName": ""
+  },
+  "schemaVersion": "1.0.0.0"
+}

@@ -1,0 +1,5 @@
+cr6b0_phaseid: =Text(cr6b0_Phase.cr6b0_projectphaseid)
+cr6b0_saguid: =Text(cr6b0_SpecializationArea.cr6b0_specializationareaid)
+cr6b0_saname: =cr6b0_SpecializationArea.cr6b0_specializationareaname
+cr6b0_subphaseid: |
+    =Text(cr6b0_Subphase.cr6b0_projectsubphaseid)

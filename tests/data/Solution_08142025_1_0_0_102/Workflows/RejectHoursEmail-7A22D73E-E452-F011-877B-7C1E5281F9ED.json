@@ -1,0 +1,231 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr6b0_sharedcommondataserviceforapps_17284"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      },
+      "shared_teams": {
+        "runtimeSource": "invoker",
+        "connection": {
+          "connectionReferenceLogicalName": "new_sharedteams_b5c90"
+        },
+        "api": {
+          "name": "shared_teams"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "manual": {
+          "metadata": {
+            "operationMetadataId": "e7a66995-ea56-429a-b858-0329dbdbbf51"
+          },
+          "type": "Request",
+          "kind": "PowerAppV2",
+          "inputs": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "title": "Comments",
+                  "type": "string",
+                  "x-ms-dynamically-added": true,
+                  "description": "Please enter your input",
+                  "x-ms-content-hint": "TEXT"
+                },
+                "date": {
+                  "title": "Date",
+                  "type": "string",
+                  "format": "date",
+                  "x-ms-dynamically-added": true,
+                  "description": "Please enter or select a date (YYYY-MM-DD)",
+                  "x-ms-content-hint": "DATE"
+                },
+                "text_1": {
+                  "title": "ConsultantID",
+                  "type": "string",
+                  "x-ms-dynamically-added": true,
+                  "description": "Please enter your input",
+                  "x-ms-content-hint": "TEXT"
+                },
+                "text_2": {
+                  "title": "ProjectID",
+                  "type": "string",
+                  "x-ms-dynamically-added": true,
+                  "description": "Please enter your input",
+                  "x-ms-content-hint": "TEXT"
+                }
+              },
+              "required": [
+                "text",
+                "date",
+                "text_1",
+                "text_2"
+              ]
+            }
+          }
+        }
+      },
+      "actions": {
+        "Get_a_row_by_ID_-_Consultants": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "c01a6235-564b-40fa-a0bd-3e8ba5c8a3e0"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "GetItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "entityName": "cr6b0_consultants",
+              "recordId": "@triggerBody()['text_1']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Get_a_row_by_ID_-_Projects": {
+          "runAfter": {
+            "Get_a_row_by_ID_-_Consultants": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "2b6eae63-7446-4157-83ce-7d2a7df79988"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "GetItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "entityName": "cr6b0_projects",
+              "recordId": "@triggerBody()['text_2']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Post_card_in_a_chat_or_channel_-_Consultant": {
+          "runAfter": {
+            "Get_a_row_by_ID_-_DM": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "58c7b680-de7c-4bcb-a01c-9b6756823966"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_teams",
+              "operationId": "PostCardToConversation",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams"
+            },
+            "parameters": {
+              "poster": "Flow bot",
+              "location": "Chat with Flow bot",
+              "body/recipient": "@{outputs('Get_a_row_by_ID_-_Consultants')?['body/cr6b0_email']};",
+              "body/messageBody": "{\n  \"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\",\n  \"type\": \"AdaptiveCard\",\n  \"version\": \"1.4\",\n  \"body\": [\n    {\n      \"type\": \"Image\",\n      \"url\": \"https://i.imgur.com/1sFqAun.png\",\n      \"size\": \"Large\",\n      \"horizontalAlignment\": \"Left\",\n      \"altText\": \"NEXTANT Logo\"\n    },\n    {\n      \"type\": \"TextBlock\",\n      \"text\": \"Your Hours Have Been Rejected\",\n      \"wrap\": true,\n      \"size\": \"Large\",\n      \"weight\": \"Bolder\",\n      \"horizontalAlignment\": \"Left\",\n      \"spacing\": \"Medium\"\n    },\n    {\n      \"type\": \"TextBlock\",\n      \"text\": \"Hey @{outputs('Get_a_row_by_ID_-_Consultants')?['body/cr6b0_consultantname']}! Hope you are having a good day.\",\n      \"wrap\": true,\n      \"horizontalAlignment\": \"Left\",\n      \"spacing\": \"Small\"\n    },\n    {\n      \"type\": \"TextBlock\",\n      \"text\": \"The hours you submitted for **@{outputs('Get_a_row_by_ID_-_Projects')?['body/cr6b0_projecttitle']}** for the week of **@{triggerBody()['date']}** have been rejected with the following comment: **'@{triggerBody()['text']}'**.\n\nPlease review your hours in the app.\",\n      \"wrap\": true,\n      \"horizontalAlignment\": \"Left\",\n      \"spacing\": \"Small\"\n    }\n  ],\n  \"actions\": [\n    {\n      \"type\": \"Action.OpenUrl\",\n      \"title\": \"Hour Tracker App\",\n      \"url\": \"https://apps.powerapps.com/play/e/ce09ad9b-57d1-e5df-9400-8ce973c86213/a/2c6fbdc1-3775-409f-9d10-2eda00fd38b4?tenantId=d232b207-f86f-4fba-8891-ccbf30b12898&hint=5a1cc166-44cb-4878-a4d8-05dfc7019a64&sourcetime=1750978450730\"\n    }\n  ]\n}\n"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Get_a_row_by_ID_-_Consultants_PM": {
+          "runAfter": {
+            "Get_a_row_by_ID_-_Projects": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "4bf25724-290b-4318-a921-6031ff98ff3c"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "GetItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "entityName": "cr6b0_consultants",
+              "recordId": "@outputs('Get_a_row_by_ID_-_Consultants')?['body/_cr6b0_peoplemanagername_value']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Get_a_row_by_ID_-_DM": {
+          "runAfter": {
+            "Get_a_row_by_ID_-_Consultants_PM": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "ae39ade3-c9a7-4e4d-86cf-1e367fd5a713"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "GetItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "entityName": "systemusers",
+              "recordId": "@outputs('Get_a_row_by_ID_-_Projects')?['body/_cr6b0_deliverymanager_value']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Post_card_in_a_chat_or_channel_-_PM": {
+          "runAfter": {
+            "Get_a_row_by_ID_-_DM": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "58c7b680-de7c-4bcb-a01c-9b6756823966"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_teams",
+              "operationId": "PostCardToConversation",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams"
+            },
+            "parameters": {
+              "poster": "Flow bot",
+              "location": "Chat with Flow bot",
+              "body/recipient": "@{outputs('Get_a_row_by_ID_-_Consultants_PM')?['body/cr6b0_email']};",
+              "body/messageBody": " {\n  \"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\",\n  \"type\": \"AdaptiveCard\",\n  \"version\": \"1.4\",\n  \"body\": [\n    {\n      \"type\": \"Image\",\n      \"url\": \"https://i.imgur.com/1sFqAun.png\",\n      \"size\": \"Large\",\n      \"horizontalAlignment\": \"Left\",\n      \"altText\": \"NEXTANT Logo\"\n    },\n    {\n      \"type\": \"TextBlock\",\n      \"text\": \"@{outputs('Get_a_row_by_ID_-_Consultants')?['body/cr6b0_consultantname']}'s Hours Have Been Rejected\",\n      \"wrap\": true,\n      \"size\": \"Large\",\n      \"weight\": \"Bolder\",\n      \"horizontalAlignment\": \"Left\",\n      \"spacing\": \"Medium\"\n    },\n    {\n      \"type\": \"TextBlock\",\n      \"text\": \"Hey @{outputs('Get_a_row_by_ID_-_Consultants_PM')?['body/cr6b0_consultantname']}! Hope you are having a good day.\",\n      \"wrap\": true,\n      \"horizontalAlignment\": \"Left\",\n      \"spacing\": \"Small\"\n    },\n    {\n      \"type\": \"TextBlock\",\n      \"text\": \"The hours submitted by **@{outputs('Get_a_row_by_ID_-_Consultants')?['body/cr6b0_consultantname']}** for **@{outputs('Get_a_row_by_ID_-_Projects')?['body/cr6b0_projecttitle']}** for the week of **@{triggerBody()['date']}** have been rejected by **@{outputs('Get_a_row_by_ID_-_DM')?['body/firstname']} @{outputs('Get_a_row_by_ID_-_DM')?['body/lastname']}** with the following comment: **'@{triggerBody()['text']}'**.\",\n      \"wrap\": true,\n      \"horizontalAlignment\": \"Left\",\n      \"spacing\": \"Small\"\n    }\n  ]\n}\n"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      }
+    },
+    "templateName": ""
+  },
+  "schemaVersion": "1.0.0.0"
+}

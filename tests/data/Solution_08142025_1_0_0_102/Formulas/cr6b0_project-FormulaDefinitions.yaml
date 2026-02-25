@@ -1,0 +1,7 @@
+cr6b0_opportunityabi: =cr6b0_Opportunity.cr6b0_analyticsbusinessinsights
+cr6b0_opportunityai: =cr6b0_Opportunity.cr6b0_artificialintelligence
+cr6b0_opportunitybpm: =cr6b0_Opportunity.cr6b0_businessprocessmodernization
+cr6b0_opportunitycm: =cr6b0_Opportunity.cr6b0_communicationsmanagement
+cr6b0_opportunitypm: =cr6b0_Opportunity.cr6b0_projectmanagement
+cr6b0_opportunitypo: =cr6b0_Opportunity.cr6b0_programoperations
+cr6b0_parentprojectguid: =Text(cr6b0_ParentProject.cr6b0_projectid)

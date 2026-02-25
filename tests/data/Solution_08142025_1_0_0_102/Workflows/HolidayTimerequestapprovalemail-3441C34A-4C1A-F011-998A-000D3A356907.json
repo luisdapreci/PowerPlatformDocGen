@@ -1,0 +1,534 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_approvals": {
+        "runtimeSource": "invoker",
+        "connection": {
+          "connectionReferenceLogicalName": "cr49f_sharedapprovals_4449a"
+        },
+        "api": {
+          "name": "shared_approvals"
+        }
+      },
+      "shared_sharepointonline_2": {
+        "runtimeSource": "invoker",
+        "connection": {
+          "connectionReferenceLogicalName": "new_sharedsharepointonline_7b16c"
+        },
+        "api": {
+          "name": "shared_sharepointonline"
+        }
+      },
+      "shared_office365": {
+        "runtimeSource": "invoker",
+        "connection": {
+          "connectionReferenceLogicalName": "cr49f_sharedoffice365_05064"
+        },
+        "api": {
+          "name": "shared_office365"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "manual": {
+          "metadata": {
+            "operationMetadataId": "bb940d11-df47-467d-b357-ba57c2c05ef8"
+          },
+          "type": "Request",
+          "kind": "PowerApp",
+          "inputs": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "Hours_Value": {
+                  "type": "integer",
+                  "description": "Enter initial value",
+                  "x-ms-powerflows-param-ispartial": false
+                },
+                "DMname_Value": {
+                  "type": "string",
+                  "description": "Enter initial value",
+                  "x-ms-powerflows-param-ispartial": false
+                },
+                "ProjectName_Value": {
+                  "type": "string",
+                  "description": "Enter initial value",
+                  "x-ms-powerflows-param-ispartial": false
+                },
+                "Consultantname_Value": {
+                  "type": "string",
+                  "description": "Enter initial value",
+                  "x-ms-powerflows-param-ispartial": false
+                },
+                "RequestDate_Value": {
+                  "type": "string",
+                  "description": "Enter initial value",
+                  "x-ms-powerflows-param-ispartial": false
+                },
+                "Comments_Value": {
+                  "type": "string",
+                  "description": "Enter initial value",
+                  "x-ms-powerflows-param-ispartial": false
+                },
+                "ConsultantEmail_Value": {
+                  "type": "string",
+                  "description": "Enter initial value",
+                  "x-ms-powerflows-param-ispartial": false
+                },
+                "DMEmail_Value": {
+                  "type": "string",
+                  "description": "Enter initial value",
+                  "x-ms-powerflows-param-ispartial": false
+                },
+                "RecordId_Value": {
+                  "type": "integer",
+                  "description": "Enter initial value",
+                  "x-ms-powerflows-param-ispartial": false
+                }
+              },
+              "required": [
+                "Hours_Value",
+                "DMname_Value",
+                "ProjectName_Value",
+                "Consultantname_Value",
+                "RequestDate_Value",
+                "Comments_Value",
+                "ConsultantEmail_Value",
+                "DMEmail_Value",
+                "RecordId_Value"
+              ]
+            }
+          }
+        }
+      },
+      "actions": {
+        "Hours": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "4c621972-c0eb-455c-ab95-a6cda1bd5b54"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Hours",
+                "type": "Integer",
+                "value": "@triggerBody()['Hours_Value']"
+              }
+            ]
+          }
+        },
+        "DMname": {
+          "runAfter": {
+            "Hours": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "72308ece-491c-4f6a-9393-fee2b9c709bb"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "DMName",
+                "type": "String",
+                "value": "@{triggerBody()['DMname_Value']}"
+              }
+            ]
+          }
+        },
+        "Project_Name": {
+          "runAfter": {
+            "DMname": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "72308ece-491c-4f6a-9393-fee2b9c709bb"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "ProjectName",
+                "type": "String",
+                "value": "@{triggerBody()['ProjectName_Value']}"
+              }
+            ]
+          }
+        },
+        "Consultantname": {
+          "runAfter": {
+            "Project_Name": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "7b41a97c-251f-459b-bd63-a42b09da3d33"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Consultantname",
+                "type": "String",
+                "value": "@{triggerBody()['Consultantname_Value']}"
+              }
+            ]
+          }
+        },
+        "RequestDate": {
+          "runAfter": {
+            "Consultantname": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "f8b041f3-98fb-413c-92e6-689e4e275914"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Requestdate",
+                "type": "String",
+                "value": "@{triggerBody()['RequestDate_Value']}"
+              }
+            ]
+          }
+        },
+        "EmptyString": {
+          "runAfter": {
+            "RequestDate": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "25deef9b-1296-4401-ba81-733832adc7ce"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "EmptyString",
+                "type": "String"
+              }
+            ]
+          }
+        },
+        "Comments": {
+          "runAfter": {
+            "EmptyString": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "65640a2a-9eb9-463f-83f1-cc3ef412a328"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Comments",
+                "type": "String",
+                "value": "@{triggerBody()['Comments_Value']}"
+              }
+            ]
+          }
+        },
+        "ConsultantEmail": {
+          "runAfter": {
+            "Comments": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "c8cdb90d-4c11-4715-bc5d-226b406c3d26"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "ConsultantEmail",
+                "type": "string",
+                "value": "@{triggerBody()['ConsultantEmail_Value']}"
+              }
+            ]
+          }
+        },
+        "DMEmail": {
+          "runAfter": {
+            "ConsultantEmail": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "1f924fc6-355c-429b-bddf-88c1d75a4c5c"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "DMEmail",
+                "type": "string",
+                "value": "@{triggerBody()['DMEmail_Value']}"
+              }
+            ]
+          }
+        },
+        "RecordId": {
+          "runAfter": {
+            "DMEmail": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "0f3846e0-0347-456a-8c1e-6660ca97900d"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "RecordId",
+                "type": "integer",
+                "value": "@triggerBody()['RecordId_Value']"
+              }
+            ]
+          }
+        },
+        "Start_and_wait_for_an_approval": {
+          "runAfter": {
+            "RecordId": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "1d92ea73-68e8-4824-aa73-5212ef12694d",
+            "flowSystemMetadata": {
+              "swaggerOperationId": "StartAndWaitForAnApproval"
+            }
+          },
+          "type": "ApiConnectionWebhook",
+          "inputs": {
+            "host": {
+              "connection": {
+                "name": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$connections']['shared_approvals']['connectionId']"
+              }
+            },
+            "body": {
+              "notificationUrl": "@{listCallbackUrl()}",
+              "title": "You have a new time request",
+              "assignedTo": "@{variables('DMEmail')};",
+              "details": "Hi @{variables('DMName')},\n\n@{variables('Consultantname')} has requested to work for @{variables('Hours')} hours on @{variables('Requestdate')} for project '@{variables('ProjectName')}'.\nBelow are the comments from the @{variables('Consultantname')} - @{variables('Comments')}  \nPlease approve the request if you agree with it.",
+              "enableNotifications": true,
+              "enableReassignment": true
+            },
+            "path": "/types/@{encodeURIComponent('BasicAwaitAll')}/subscriptions",
+            "authentication": {
+              "type": "Raw",
+              "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+            }
+          }
+        },
+        "Condition": {
+          "actions": {
+            "Update_item_3": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "d5a84ce2-903e-4811-a280-5fe831327f19",
+                "flowSystemMetadata": {
+                  "swaggerOperationId": "PatchItem"
+                }
+              },
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$connections']['shared_sharepointonline_2']['connectionId']"
+                  }
+                },
+                "method": "patch",
+                "body": {
+                  "RequestStatus": "Approved",
+                  "isActive": {
+                    "Value": "Yes"
+                  }
+                },
+                "path": "/datasets/@{encodeURIComponent(encodeURIComponent('https://nextant.sharepoint.com/sites/NextantTeam'))}/tables/@{encodeURIComponent(encodeURIComponent('a83ab7bf-e609-48cd-85f8-95be8161c88e'))}/items/@{encodeURIComponent(variables('RecordId'))}",
+                "authentication": {
+                  "type": "Raw",
+                  "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+                }
+              }
+            },
+            "Send_an_email_from_a_shared_mailbox_(V2)": {
+              "runAfter": {
+                "Update_item_3": [
+                  "Succeeded",
+                  "Failed"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "afc01382-b6a0-4865-b460-2ad59da954f4",
+                "flowSystemMetadata": {
+                  "swaggerOperationId": "SharedMailboxSendEmailV2"
+                }
+              },
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$connections']['shared_office365']['connectionId']"
+                  }
+                },
+                "method": "post",
+                "body": {
+                  "MailboxAddress": "myportal@nextant.com",
+                  "To": "@variables('ConsultantEmail')",
+                  "Subject": "Request approved",
+                  "Body": "<p>Hi @{variables('Consultantname')},<br>\n<br>\n@{variables('DMName')} has approved your request to work on @{variables('Requestdate')} for @{variables('Hours')} hours.<br>\n<br>\n<br>\nThank you,<br>\nPeople@Nextant</p>",
+                  "Importance": "Normal"
+                },
+                "path": "/v2/SharedMailbox/Mail",
+                "authentication": {
+                  "type": "Raw",
+                  "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "Start_and_wait_for_an_approval": [
+              "Succeeded"
+            ]
+          },
+          "else": {
+            "actions": {
+              "Update_item": {
+                "runAfter": {},
+                "metadata": {
+                  "operationMetadataId": "68755834-52b5-4af2-b630-0a2a0bd358f0",
+                  "flowSystemMetadata": {
+                    "swaggerOperationId": "PatchItem"
+                  }
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                  "host": {
+                    "connection": {
+                      "name": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$connections']['shared_sharepointonline_2']['connectionId']"
+                    }
+                  },
+                  "method": "patch",
+                  "body": {
+                    "RequestStatus": "Rejected",
+                    "isActive": {
+                      "Value": "Yes"
+                    }
+                  },
+                  "path": "/datasets/@{encodeURIComponent(encodeURIComponent('https://nextant.sharepoint.com/sites/NextantTeam'))}/tables/@{encodeURIComponent(encodeURIComponent('a83ab7bf-e609-48cd-85f8-95be8161c88e'))}/items/@{encodeURIComponent(variables('RecordId'))}",
+                  "authentication": {
+                    "type": "Raw",
+                    "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+                  }
+                }
+              },
+              "Send_an_email_from_a_shared_mailbox_(V2)_2": {
+                "runAfter": {
+                  "Update_item": [
+                    "Succeeded",
+                    "Failed"
+                  ]
+                },
+                "metadata": {
+                  "operationMetadataId": "304eee5f-1a88-4099-9aef-08fd98815a5d",
+                  "flowSystemMetadata": {
+                    "swaggerOperationId": "SharedMailboxSendEmailV2"
+                  }
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                  "host": {
+                    "connection": {
+                      "name": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$connections']['shared_office365']['connectionId']"
+                    }
+                  },
+                  "method": "post",
+                  "body": {
+                    "MailboxAddress": "myportal@nextant.com",
+                    "To": "@variables('ConsultantEmail')",
+                    "Subject": "Request rejected",
+                    "Body": "<p>Hi @{variables('Consultantname')},<br>\n<br>\n@{variables('DMName')} has rejected your request to work on @{variables('Requestdate')} for @{variables('Hours')} hours.<br>\n<br>\n<br>\nThank you,<br>\nPeople@Nextant</p>",
+                    "Importance": "Normal"
+                  },
+                  "path": "/v2/SharedMailbox/Mail",
+                  "authentication": {
+                    "type": "Raw",
+                    "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+                  }
+                }
+              }
+            }
+          },
+          "expression": {
+            "equals": [
+              "@body('Start_and_wait_for_an_approval')?['outcome']",
+              "Approve"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "ddd3e98b-6dde-49e9-b6da-18fd8aa9d879"
+          },
+          "type": "If"
+        },
+        "Respond_to_a_Power_App_or_flow": {
+          "runAfter": {
+            "Condition": [
+              "Succeeded",
+              "Failed",
+              "Skipped",
+              "TimedOut"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "8faa4b34-49b1-457f-9cbf-7c5b731a1b38"
+          },
+          "type": "Response",
+          "kind": "PowerApp",
+          "inputs": {
+            "statusCode": 200,
+            "body": {
+              "outcome": "@body('Start_and_wait_for_an_approval')?['outcome']"
+            },
+            "schema": {
+              "type": "object",
+              "properties": {
+                "outcome": {
+                  "title": "Outcome",
+                  "x-ms-dynamically-added": true,
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "templateName": ""
+  },
+  "schemaVersion": "1.0.0.0"
+}

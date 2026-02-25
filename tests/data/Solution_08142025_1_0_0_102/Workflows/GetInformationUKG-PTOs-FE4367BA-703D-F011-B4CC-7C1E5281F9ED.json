@@ -1,0 +1,577 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr6b0_sharedcommondataserviceforapps_17284"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      },
+      "shared_office365": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "new_sharedoffice365_0e543"
+        },
+        "api": {
+          "name": "shared_office365"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "Recurrence": {
+          "recurrence": {
+            "frequency": "Week",
+            "interval": 1,
+            "timeZone": "SA Pacific Standard Time",
+            "schedule": {
+              "weekDays": [
+                "Monday"
+              ],
+              "hours": [
+                "8"
+              ],
+              "minutes": [
+                15
+              ]
+            }
+          },
+          "evaluatedRecurrence": {
+            "frequency": "Week",
+            "interval": 1,
+            "timeZone": "SA Pacific Standard Time",
+            "schedule": {
+              "weekDays": [
+                "Monday"
+              ],
+              "hours": [
+                "8"
+              ],
+              "minutes": [
+                15
+              ]
+            }
+          },
+          "metadata": {
+            "operationMetadataId": "85809992-e229-4b50-8940-fc95c9e2b4f6"
+          },
+          "type": "Recurrence"
+        }
+      },
+      "actions": {
+        "Initialize_variable_-_Consultant_PTO": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "293e51cd-11bd-43a3-8291-84ce8f74130b"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Consultant PTO",
+                "type": "string",
+                "value": "@{guid()}"
+              }
+            ]
+          }
+        },
+        "List_rows_-_Consultants": {
+          "runAfter": {
+            "Initialize_variable_-_Requested_Time": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "32ab66dc-1b4b-43d6-94be-517d26b9e170"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "ListRecords",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "entityName": "cr6b0_consultants",
+              "$select": "cr6b0_email, cr6b0_consultantid",
+              "$filter": "cr6b0_employeestatus eq true and cr6b0_email ne null"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Apply_to_each": {
+          "foreach": "@outputs('List_rows_-_Consultants')?['body/value']",
+          "actions": {
+            "Compose_-_Consultant_Alias": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "5e08ff79-7673-4cfb-98ab-cf7012599c19"
+              },
+              "type": "Compose",
+              "inputs": "@split(items('Apply_to_each')?['cr6b0_email'], '@')[0]"
+            },
+            "Run_a_Child_Flow": {
+              "runAfter": {
+                "Compose_-_Consultant_Alias": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "31677ac3-c13a-4e51-bf27-e02837f6a94b"
+              },
+              "type": "Workflow",
+              "inputs": {
+                "host": {
+                  "workflowReferenceName": "ff4367ba-703d-f011-b4cc-7c1e5281f9ed"
+                }
+              }
+            },
+            "HTTP": {
+              "runAfter": {
+                "Send_an_email_(V2)_2": [
+                  "Skipped"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "7f605725-6606-451f-a1af-5b36f532220c"
+              },
+              "type": "Http",
+              "inputs": {
+                "method": "GET",
+                "uri": "https://secure.saashr.com/ta/rest/v1/employee/ptorequest/all",
+                "headers": {
+                  "Accept": "application/xml",
+                  "Authentication": "Bearer @{body('Run_a_Child_Flow')?['token']}",
+                  "Content-Type": "application/json",
+                  "Content-length": "365"
+                },
+                "queries": {
+                  "fromDate": "2024-07-01",
+                  "filter": "acc_username:in:@{outputs('Compose_-_Consultant_Alias')}",
+                  "sort": "-from_date"
+                }
+              }
+            },
+            "Compose_-_JSON": {
+              "runAfter": {
+                "HTTP": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "c5c72b59-64ad-462a-89a0-4fd254f80cd4"
+              },
+              "type": "Compose",
+              "inputs": "@json(outputs('HTTP')?['body'])"
+            },
+            "Condition": {
+              "actions": {},
+              "runAfter": {
+                "Get_a_row_by_ID_-_Consultants": [
+                  "Succeeded"
+                ]
+              },
+              "else": {
+                "actions": {
+                  "Compose_-_If_Array": {
+                    "runAfter": {},
+                    "metadata": {
+                      "operationMetadataId": "9e056a94-3fa2-4702-91aa-8ffcdf00b7df"
+                    },
+                    "type": "Compose",
+                    "inputs": "@if( startsWith( string(outputs('Compose_-_JSON')?['pto_requests']?['ptorequests']?['ptorequests']), '['), outputs('Compose_-_JSON')?['pto_requests']?['ptorequests']?['ptorequests'], createArray(outputs('Compose_-_JSON')?['pto_requests']?['ptorequests']?['ptorequests']))"
+                  },
+                  "Parse_JSON": {
+                    "runAfter": {
+                      "Compose_-_If_Array": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "5396db0d-6a64-407f-9f5e-f09967b919c4"
+                    },
+                    "type": "ParseJson",
+                    "inputs": {
+                      "content": "@outputs('Compose_-_If_Array')",
+                      "schema": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "employee": {
+                              "type": "object",
+                              "properties": {
+                                "account_id": {
+                                  "type": "string"
+                                },
+                                "full_name": {
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            "from_date": {
+                              "type": "string"
+                            },
+                            "to_date": {
+                              "type": "string"
+                            },
+                            "pto_details": {
+                              "type": "object",
+                              "properties": {
+                                "request_id": {
+                                  "type": "string"
+                                },
+                                "request_state": {
+                                  "type": "string"
+                                },
+                                "requested_time": {
+                                  "type": "string"
+                                },
+                                "duration_unit": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "required": [
+                            "employee",
+                            "from_date",
+                            "to_date"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "Apply_to_each_2": {
+                    "foreach": "@body('Parse_JSON')",
+                    "actions": {
+                      "Condition_2": {
+                        "actions": {
+                          "Set_variable_-_Consultant_PTO_2": {
+                            "runAfter": {
+                              "Upsert_a_row_-_Consultant_PTOS": [
+                                "Succeeded"
+                              ]
+                            },
+                            "metadata": {
+                              "operationMetadataId": "dc6119e4-232c-46b0-a23c-976236fe4dcc"
+                            },
+                            "type": "SetVariable",
+                            "inputs": {
+                              "name": "Consultant PTO",
+                              "value": "@{guid()}"
+                            }
+                          },
+                          "Upsert_a_row_-_Consultant_PTOS": {
+                            "runAfter": {
+                              "Compose_-_Consultant_Identifier": [
+                                "Succeeded"
+                              ]
+                            },
+                            "metadata": {
+                              "operationMetadataId": "78be3fce-364f-42c1-9156-3cb47d6d8109"
+                            },
+                            "type": "OpenApiConnection",
+                            "inputs": {
+                              "host": {
+                                "connectionName": "shared_commondataserviceforapps",
+                                "operationId": "UpdateRecord",
+                                "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                              },
+                              "parameters": {
+                                "entityName": "cr6b0_consultantptos",
+                                "recordId": "@variables('Consultant PTO')",
+                                "item/cr6b0_ptoidentifier": "@items('Apply_to_each_2')?['pto_details']?['request_id']",
+                                "item/cr6b0_ConsultantIdentifier@odata.bind": "@outputs('Compose_-_Consultant_Identifier')",
+                                "item/cr6b0_consultantname": "@items('Apply_to_each_2')?['employee']?['full_name']",
+                                "item/cr6b0_enddate": "@items('Apply_to_each_2')['to_date']",
+                                "item/cr6b0_ptostate": "@items('Apply_to_each_2')?['pto_details']?['request_state']",
+                                "item/cr6b0_requestedtimedays": "@outputs('Compose_-_Requested_Time')",
+                                "item/cr6b0_startdate": "@items('Apply_to_each_2')['from_date']"
+                              },
+                              "authentication": "@parameters('$authentication')"
+                            }
+                          },
+                          "Apply_to_each_3": {
+                            "foreach": "@outputs('List_rows_-_Consultant_PTOS')?['body/value']",
+                            "actions": {
+                              "Set_variable_-_Consultant_PTO": {
+                                "runAfter": {},
+                                "metadata": {
+                                  "operationMetadataId": "bc033014-c3e8-41de-a019-d8baa17e70ab"
+                                },
+                                "type": "SetVariable",
+                                "inputs": {
+                                  "name": "Consultant PTO",
+                                  "value": "@items('Apply_to_each_3')?['cr6b0_consultantptoid']"
+                                }
+                              }
+                            },
+                            "runAfter": {
+                              "List_rows_-_Consultant_PTOS": [
+                                "Succeeded"
+                              ]
+                            },
+                            "metadata": {
+                              "operationMetadataId": "2aec669b-b155-479e-aad7-35d2bb8e3406"
+                            },
+                            "type": "Foreach"
+                          },
+                          "List_rows_-_Consultant_PTOS": {
+                            "runAfter": {},
+                            "metadata": {
+                              "operationMetadataId": "c0784e70-1605-4318-a980-095ba6640361"
+                            },
+                            "type": "OpenApiConnection",
+                            "inputs": {
+                              "host": {
+                                "connectionName": "shared_commondataserviceforapps",
+                                "operationId": "ListRecords",
+                                "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                              },
+                              "parameters": {
+                                "entityName": "cr6b0_consultantptos",
+                                "$filter": "cr6b0_ptoidentifier eq '@{items('Apply_to_each_2')?['pto_details']?['request_id']}'",
+                                "$top": 1
+                              },
+                              "authentication": "@parameters('$authentication')"
+                            }
+                          },
+                          "Compose_-_Consultant_Identifier": {
+                            "runAfter": {
+                              "Compose_-_Requested_Time": [
+                                "Succeeded"
+                              ]
+                            },
+                            "metadata": {
+                              "operationMetadataId": "27088575-8777-4bb6-ae31-d481cc836aa5"
+                            },
+                            "type": "Compose",
+                            "inputs": "@concat('/cr6b0_consultants(', outputs('Get_a_row_by_ID_-_Consultants')?['body/cr6b0_consultantid'], ')')\r\n"
+                          },
+                          "Condition_3": {
+                            "actions": {
+                              "Set_variable_-_Requested_Time_Days": {
+                                "runAfter": {},
+                                "metadata": {
+                                  "operationMetadataId": "66239e93-f98a-4d59-bac5-77b10b9fa351"
+                                },
+                                "type": "SetVariable",
+                                "inputs": {
+                                  "name": "Requested Time",
+                                  "value": "@{items('Apply_to_each_2')?['pto_details']?['requested_time']}"
+                                }
+                              }
+                            },
+                            "runAfter": {
+                              "Apply_to_each_3": [
+                                "Succeeded"
+                              ]
+                            },
+                            "else": {
+                              "actions": {
+                                "Set_variable_-_Requested_Time_Hours": {
+                                  "runAfter": {},
+                                  "metadata": {
+                                    "operationMetadataId": "2e2b5d0a-1e2e-4718-ad54-4104d16be79e"
+                                  },
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "name": "Requested Time",
+                                    "value": "@{div(float(split(items('Apply_to_each_2')?['pto_details']?['requested_time'], ':')[0]), 8)}"
+                                  }
+                                }
+                              }
+                            },
+                            "expression": {
+                              "equals": [
+                                "@items('Apply_to_each_2')?['pto_details']?['duration_unit']",
+                                "DAYS"
+                              ]
+                            },
+                            "metadata": {
+                              "operationMetadataId": "3f6c384a-f674-4f3a-8d60-2400c266a6c8"
+                            },
+                            "type": "If"
+                          },
+                          "Compose_-_Requested_Time": {
+                            "runAfter": {
+                              "Condition_3": [
+                                "Succeeded"
+                              ]
+                            },
+                            "metadata": {
+                              "operationMetadataId": "dc7ef597-87c9-49ba-a437-1b383f5a2447"
+                            },
+                            "type": "Compose",
+                            "inputs": "@float(variables('Requested Time'))"
+                          }
+                        },
+                        "runAfter": {},
+                        "expression": {
+                          "equals": [
+                            "@items('Apply_to_each_2')?['pto_details']?['request_state']",
+                            "@'Approved'"
+                          ]
+                        },
+                        "metadata": {
+                          "operationMetadataId": "b0aad965-9b52-48d8-b933-2625d8c37d61"
+                        },
+                        "type": "If"
+                      }
+                    },
+                    "runAfter": {
+                      "Parse_JSON": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "551ef617-9db7-4e3b-ab8a-ac03ce9d3d3a"
+                    },
+                    "type": "Foreach",
+                    "runtimeConfiguration": {
+                      "concurrency": {
+                        "repetitions": 1
+                      }
+                    }
+                  }
+                }
+              },
+              "expression": {
+                "equals": [
+                  "@empty(outputs('Compose_-_JSON')?['pto_requests']?['ptorequests']?['ptorequests'])",
+                  true
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "0d0ca374-e637-42a7-84fa-6a046fd30169"
+              },
+              "type": "If"
+            },
+            "Get_a_row_by_ID_-_Consultants": {
+              "runAfter": {
+                "Compose_-_JSON": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "a0c12dbb-5fb3-4341-9a01-f22c9ca1efca"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "GetItem",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_consultants",
+                  "recordId": "@items('Apply_to_each')?['cr6b0_consultantid']"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Send_an_email_(V2)_2": {
+              "runAfter": {
+                "Run_a_Child_Flow": [
+                  "Failed",
+                  "TimedOut"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "8237b928-1bb1-4610-9ae3-49ab7e95e42f"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_office365",
+                  "operationId": "SendEmailV2",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                },
+                "parameters": {
+                  "emailMessage/To": "jrojas@nextant.com;ssangal@nextant.com",
+                  "emailMessage/Subject": "PTO flow has failed due to authentication error",
+                  "emailMessage/Body": "<p>The Get Information UKG - PTO flow has failed, pelase review it on the Power Automate site.</p>",
+                  "emailMessage/Cc": "emonsalve@nextant.com",
+                  "emailMessage/Importance": "Normal"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "runAfter": {
+            "List_rows_-_Consultants": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "f432f420-d7d1-4eef-8516-9b45986c8b32"
+          },
+          "type": "Foreach"
+        },
+        "Initialize_variable_-_Requested_Time": {
+          "runAfter": {
+            "Initialize_variable_-_Consultant_PTO": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "84653a55-c975-4c6a-a4b6-06fa2341eac3"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Requested Time",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "Send_an_email_(V2)": {
+          "runAfter": {
+            "Apply_to_each": [
+              "Failed",
+              "TimedOut"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "8237b928-1bb1-4610-9ae3-49ab7e95e42f"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_office365",
+              "operationId": "SendEmailV2",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+            },
+            "parameters": {
+              "emailMessage/To": "jrojas@nextant.com;ssangal@nextant.com",
+              "emailMessage/Subject": "The Get Information UKG - PTO flow has failed",
+              "emailMessage/Body": "<p>The Get Information UKG - PTO flow has failed, pelase review it on the Power Automate site.</p>",
+              "emailMessage/Importance": "Normal"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      }
+    },
+    "templateName": ""
+  },
+  "schemaVersion": "1.0.0.0"
+}

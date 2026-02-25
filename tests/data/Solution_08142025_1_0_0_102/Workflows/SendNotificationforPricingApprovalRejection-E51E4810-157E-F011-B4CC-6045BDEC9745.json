@@ -1,0 +1,451 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_teams": {
+        "runtimeSource": "invoker",
+        "connection": {
+          "connectionReferenceLogicalName": "cr41e_sharedteams_9e1c0"
+        },
+        "api": {
+          "name": "shared_teams"
+        }
+      },
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr41e_sharedcommondataserviceforapps_e759b"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      },
+      "shared_office365": {
+        "runtimeSource": "invoker",
+        "connection": {
+          "connectionReferenceLogicalName": "new_sharedoffice365_f3920"
+        },
+        "api": {
+          "name": "shared_office365"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "manual": {
+          "metadata": {
+            "operationMetadataId": "53be7b08-4633-4817-b68e-c760d6946fd3"
+          },
+          "type": "Request",
+          "kind": "PowerAppV2",
+          "inputs": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "title": "Project Name",
+                  "type": "string",
+                  "x-ms-dynamically-added": true,
+                  "description": "Please enter your input",
+                  "x-ms-content-hint": "TEXT"
+                },
+                "text_1": {
+                  "title": "Link",
+                  "type": "string",
+                  "x-ms-dynamically-added": true,
+                  "description": "Please enter your input",
+                  "x-ms-content-hint": "TEXT"
+                },
+                "text_3": {
+                  "title": "Draft ID",
+                  "type": "string",
+                  "x-ms-dynamically-added": true,
+                  "description": "Please enter your input",
+                  "x-ms-content-hint": "TEXT"
+                },
+                "text_2": {
+                  "title": "approved/rejected",
+                  "type": "string",
+                  "x-ms-dynamically-added": true,
+                  "description": "Please enter your input",
+                  "x-ms-content-hint": "TEXT"
+                },
+                "text_4": {
+                  "title": "Comments",
+                  "type": "string",
+                  "x-ms-dynamically-added": true,
+                  "description": "Please enter your input",
+                  "x-ms-content-hint": "TEXT"
+                },
+                "text_5": {
+                  "title": "dev/ops",
+                  "type": "string",
+                  "x-ms-dynamically-added": true,
+                  "description": "Please enter your input",
+                  "x-ms-content-hint": "TEXT"
+                }
+              },
+              "required": [
+                "text",
+                "text_1",
+                "text_3",
+                "text_2",
+                "text_4",
+                "text_5"
+              ]
+            }
+          }
+        }
+      },
+      "actions": {
+        "Condition": {
+          "actions": {
+            "Post_card_in_a_chat_or_channel_-_Approved": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "5f542a3e-4e2e-469a-bb1c-112ee95644ed"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_teams",
+                  "operationId": "PostCardToConversation",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams"
+                },
+                "parameters": {
+                  "poster": "Flow bot",
+                  "location": "Chat with Flow bot",
+                  "body/recipient": "@{outputs('Get_a_row_by_ID_-_Users')?['body/internalemailaddress']};",
+                  "body/messageBody": "{\n  \"type\": \"AdaptiveCard\",\n  \"version\": \"1.4\",\n  \"body\": [\n    {\n      \"type\": \"TextBlock\",\n      \"size\": \"Medium\",\n      \"weight\": \"Bolder\",\n      \"text\": \"Hello @{outputs('Get_a_row_by_ID_-_Users')?['body/firstname']},\"\n    },\n    {\n      \"type\": \"TextBlock\",\n      \"wrap\": true,\n      \"text\": \"Your pricing request for the **@{triggerBody()?['text']}** project has been **APPROVED** by **@{triggerBody()['text_5']}** with the following comments: \"\n    },\n    {\n      \"type\": \"TextBlock\",\n      \"wrap\": true,\n      \"text\": \"'@{triggerBody()['text_4']}'\"\n    },\n    {\n      \"type\": \"TextBlock\",\n      \"wrap\": true,\n      \"text\": \"Please review it [here](@{triggerBody()?['text_1']}) in the 'Pricing' tab.\"\n    }\n  ]\n}"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "runAfter": {
+            "Get_a_row_by_ID_-_Users": [
+              "Succeeded"
+            ]
+          },
+          "else": {
+            "actions": {
+              "Post_card_in_a_chat_or_channel_-_Rejected": {
+                "runAfter": {},
+                "metadata": {
+                  "operationMetadataId": "dfad09da-d8a1-4e2e-a9d5-738ea037795b"
+                },
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "connectionName": "shared_teams",
+                    "operationId": "PostCardToConversation",
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams"
+                  },
+                  "parameters": {
+                    "poster": "Flow bot",
+                    "location": "Chat with Flow bot",
+                    "body/recipient": "@{outputs('Get_a_row_by_ID_-_Users')?['body/internalemailaddress']};",
+                    "body/messageBody": "{\n  \"type\": \"AdaptiveCard\",\n  \"version\": \"1.4\",\n  \"body\": [\n    {\n      \"type\": \"TextBlock\",\n      \"size\": \"Medium\",\n      \"weight\": \"Bolder\",\n      \"text\": \"Hello @{outputs('Get_a_row_by_ID_-_Users')?['body/firstname']},\"\n    },\n    {\n      \"type\": \"TextBlock\",\n      \"wrap\": true,\n      \"text\": \"Your pricing request for the **@{triggerBody()?['text']}** project has been **REJECTED** by **@{triggerBody()['text_5']}** with the following comments: \"\n    },\n    {\n      \"type\": \"TextBlock\",\n      \"wrap\": true,\n      \"text\": \"'@{triggerBody()['text_4']}'\"\n    },\n    {\n      \"type\": \"TextBlock\",\n      \"wrap\": true,\n      \"text\": \"Please review it [here](@{triggerBody()?['text_1']}) in the 'Pricing' tab and make the required changes.\"\n    }\n  ]\n}"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                }
+              }
+            }
+          },
+          "expression": {
+            "equals": [
+              "@triggerBody()['text_2']",
+              "approved"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "68484d7a-2fae-4223-9e0a-ffe7650cfc30"
+          },
+          "type": "If"
+        },
+        "Get_a_row_by_ID_-_Project_Pricings": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "5ad93577-ee4d-455c-b862-a3ac98b36cf6"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "GetItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "entityName": "cr41e_projectpricings",
+              "recordId": "@triggerBody()['text_3']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Get_a_row_by_ID_-_Users": {
+          "runAfter": {
+            "Get_a_row_by_ID_-_Project_Pricings": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "d3780352-aa5c-4a54-a593-3857c9d57d9d"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "GetItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "entityName": "systemusers",
+              "recordId": "@outputs('Get_a_row_by_ID_-_Project_Pricings')?['body/_createdby_value']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Condition_2": {
+          "actions": {
+            "Apply_to_each_2": {
+              "foreach": "@outputs('List_rows_-_Pricing_Approval_Users_-_Resourcing')?['body/value']",
+              "actions": {
+                "Append_to_array_variable_-_Recipients_-_Resourcing": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "b5aba529-4449-4e07-92e9-d6fed78e6c33"
+                  },
+                  "type": "AppendToArrayVariable",
+                  "inputs": {
+                    "name": "Recipients",
+                    "value": {
+                      "name": "@items('Apply_to_each_2')?['cr6b0_approvername']",
+                      "email": "@items('Apply_to_each_2')?['cr6b0_approvaluser']"
+                    }
+                  }
+                }
+              },
+              "runAfter": {
+                "List_rows_-_Pricing_Approval_Users_-_Resourcing": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "d6103645-bc80-4812-a90c-207aeaeab717"
+              },
+              "type": "Foreach"
+            },
+            "List_rows_-_Pricing_Approval_Users_-_Resourcing": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "96427a14-fa46-4aac-9cf7-4561fe079f7d"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_pricingapprovaluserses",
+                  "$filter": "cr6b0_approvalarea eq 'Resourcing'"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "runAfter": {
+            "Initialize_variable_-_Recipients": [
+              "Succeeded"
+            ]
+          },
+          "else": {
+            "actions": {
+              "Condition_3": {
+                "actions": {
+                  "List_rows_-_Pricing_Approval_Users_-_Biz_Dev_and_Resourcing": {
+                    "runAfter": {},
+                    "metadata": {
+                      "operationMetadataId": "5371bea2-49ab-4690-8eb4-a75ef3650f2c"
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "connectionName": "shared_commondataserviceforapps",
+                        "operationId": "ListRecords",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                      },
+                      "parameters": {
+                        "entityName": "cr6b0_pricingapprovaluserses",
+                        "$filter": "cr6b0_approvalarea eq 'Biz Dev' or cr6b0_approvalarea eq 'Resourcing'"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    }
+                  },
+                  "Apply_to_each_4": {
+                    "foreach": "@outputs('List_rows_-_Pricing_Approval_Users_-_Biz_Dev_and_Resourcing')?['body/value']",
+                    "actions": {
+                      "Append_to_array_variable_-_Recipients_-_Biz_Dev": {
+                        "runAfter": {},
+                        "metadata": {
+                          "operationMetadataId": "15b96cae-bff6-4666-9ed3-b8c8a97c6f2e"
+                        },
+                        "type": "AppendToArrayVariable",
+                        "inputs": {
+                          "name": "Recipients",
+                          "value": {
+                            "name": "@items('Apply_to_each_4')?['cr6b0_approvername']",
+                            "email": "@items('Apply_to_each_4')?['cr6b0_approvaluser']"
+                          }
+                        }
+                      }
+                    },
+                    "runAfter": {
+                      "List_rows_-_Pricing_Approval_Users_-_Biz_Dev_and_Resourcing": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "b862b744-aa2d-4a56-b6ec-169b13cd5b4b"
+                    },
+                    "type": "Foreach"
+                  }
+                },
+                "runAfter": {},
+                "expression": {
+                  "and": [
+                    {
+                      "equals": [
+                        "@triggerBody()['text_2']",
+                        "approved"
+                      ]
+                    },
+                    {
+                      "equals": [
+                        "@triggerBody()['text_5']",
+                        "Biz Ops"
+                      ]
+                    }
+                  ]
+                },
+                "metadata": {
+                  "operationMetadataId": "4b564f5e-a2ea-4216-8bad-f7fd9b72025f"
+                },
+                "type": "If"
+              }
+            }
+          },
+          "expression": {
+            "and": [
+              {
+                "equals": [
+                  "@triggerBody()['text_2']",
+                  "approved"
+                ]
+              },
+              {
+                "equals": [
+                  "@triggerBody()['text_5']",
+                  "Biz Dev"
+                ]
+              }
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "b9d41f04-ce82-4b97-acce-a3f6588e6ee2"
+          },
+          "type": "If"
+        },
+        "Initialize_variable_-_Recipients": {
+          "runAfter": {
+            "Condition": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "5cf58c76-1104-4231-ac52-8b53d22a9ae6"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Recipients",
+                "type": "array",
+                "value": [
+                  {
+                    "name": "Julian",
+                    "email": "jrojas@nextant.com"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "Condition_4": {
+          "actions": {
+            "Apply_to_each": {
+              "foreach": "@variables('Recipients')",
+              "actions": {
+                "Send_an_email_(V2)": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "5034c440-c1dc-40a7-8f8b-f9cfef7318c1"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_office365",
+                      "operationId": "SendEmailV2",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                    },
+                    "parameters": {
+                      "emailMessage/To": "@items('Apply_to_each')['email']",
+                      "emailMessage/Subject": "Pricing Approval Status Has Changed: @{triggerBody()['text']}",
+                      "emailMessage/Body": "<p>Hello @{items('Apply_to_each')['name']},</p>\n\n<p>Pricing request for the <strong>@{triggerBody()?['text']}</strong> project has been <strong>APPROVED</strong> by <strong>@{triggerBody()['text_5']}</strong> with the following comments: '@{triggerBody()['text_4']}'</p>\n\n<p>Please review it <a href=\"@{triggerBody()?['text_1']}\">here</a> in the 'Pricing' tab.</p>",
+                      "emailMessage/Importance": "Normal"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              },
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "ed75584f-b022-484c-87a4-bd737ec7cf0c"
+              },
+              "type": "Foreach"
+            }
+          },
+          "runAfter": {
+            "Condition_2": [
+              "Succeeded"
+            ]
+          },
+          "expression": {
+            "equals": [
+              "@triggerBody()['text_2']",
+              "approved"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "929c87f0-632c-4d01-8330-0b5060f9370d"
+          },
+          "type": "If"
+        }
+      }
+    },
+    "templateName": ""
+  },
+  "schemaVersion": "1.0.0.0"
+}

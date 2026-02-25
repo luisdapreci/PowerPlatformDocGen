@@ -1,0 +1,521 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr6b0_sharedcommondataserviceforapps_17284"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      },
+      "shared_office365_1": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr41e_sharedoffice365_c6fd2"
+        },
+        "api": {
+          "name": "shared_office365"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "Recurrence": {
+          "recurrence": {
+            "frequency": "Day",
+            "interval": 1,
+            "timeZone": "Eastern Standard Time",
+            "schedule": {
+              "hours": [
+                "0"
+              ]
+            }
+          },
+          "evaluatedRecurrence": {
+            "frequency": "Week",
+            "interval": 1,
+            "timeZone": "SA Pacific Standard Time",
+            "schedule": {
+              "weekDays": [
+                "Monday"
+              ],
+              "hours": [
+                "8"
+              ]
+            }
+          },
+          "metadata": {
+            "operationMetadataId": "0e0f644a-c59f-4056-91ac-d1748665c464"
+          },
+          "type": "Recurrence"
+        }
+      },
+      "actions": {
+        "Run_a_Child_Flow": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "c31dafae-9f24-4946-a33f-bb163f6a6c39"
+          },
+          "type": "Workflow",
+          "inputs": {
+            "host": {
+              "workflowReferenceName": "ff4367ba-703d-f011-b4cc-7c1e5281f9ed"
+            }
+          }
+        },
+        "HTTP_-_Get_Information_UKG": {
+          "runAfter": {
+            "Send_an_email_(V2)": [
+              "Skipped"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "9172fe9a-b304-4440-afc3-545da602e449"
+          },
+          "type": "Http",
+          "inputs": {
+            "method": "GET",
+            "uri": "https://secure.saashr.com/ta/rest/v1/report/saved/107597467",
+            "headers": {
+              "Accept": "application/xml",
+              "Authentication": "Bearer @{body('Run_a_Child_Flow')?['token']}",
+              "Content-Type": "application/json",
+              "Content-length": "365"
+            }
+          }
+        },
+        "Compose": {
+          "runAfter": {
+            "HTTP_-_Get_Information_UKG": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "1c4000ae-0079-44f1-901c-c88a6c5a6e8a"
+          },
+          "type": "Compose",
+          "inputs": "@xpath(\r\n  xml(body('HTTP_-_Get_Information_UKG')),\r\n  '/result/body/row'\r\n)"
+        },
+        "Select": {
+          "runAfter": {
+            "Compose": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "5575785c-1a7a-41e6-901c-d7c88ae11115"
+          },
+          "type": "Select",
+          "inputs": {
+            "from": "@outputs('Compose')",
+            "select": {
+              "Email": "@concat(\r\n  xpath(\r\n    xml(base64ToString(item()?['$content'])),\r\n    'string(/row/col[1])'\r\n  ),\r\n  '@nextant.com'\r\n)\r\n",
+              "SA": "@xpath(\r\n  xml(base64ToString(item()?['$content'])),\r\n  'string(/row/col[8])'\r\n)\r\n",
+              "Skill Name": "@xpath(\r\n  xml(base64ToString(item()?['$content'])),\r\n  'string(/row/col[10])'\r\n)\r\n",
+              "Skill Level": "@xpath(\r\n  xml(base64ToString(item()?['$content'])),\r\n  'string(/row/col[11])'\r\n)\r\n",
+              "Skill Years": "@xpath(\r\n  xml(base64ToString(item()?['$content'])),\r\n  'string(/row/col[12])'\r\n)\r\n",
+              "Expertise Level": "@xpath(\r\n  xml(base64ToString(item()?['$content'])),\r\n  'string(/row/col[13])'\r\n)\r\n"
+            }
+          }
+        },
+        "Initialize_variable_-_Skill_ID": {
+          "runAfter": {
+            "Select": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "032bd39a-0e88-42a7-9d41-fd25d3520945"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Skill ID",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "Initialize_variable_-_SA_ID": {
+          "runAfter": {
+            "Initialize_variable_-_Skill_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "35f3ef2d-d2e9-45f7-bf7e-a13d0324fe71"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "SA ID",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "Apply_to_each": {
+          "foreach": "@body('Select')",
+          "actions": {
+            "List_rows_-_Skills": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "571bec7e-aaee-474d-afb9-0d5314855b51"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_skills",
+                  "$filter": "cr6b0_skillnames eq '@{items('Apply_to_each')?['Skill Name']}'",
+                  "$top": 1
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Apply_to_each_2": {
+              "foreach": "@outputs('List_rows_-_Skills')?['body/value']",
+              "actions": {
+                "Set_variable_-_Skill_ID": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "995fa44b-c761-4a9b-82fe-5b5b06935ab1"
+                  },
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "Skill ID",
+                    "value": "@items('Apply_to_each_2')?['cr6b0_skillid']"
+                  }
+                }
+              },
+              "runAfter": {
+                "List_rows_-_Skills": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "c8740729-05e5-404b-bd94-6c700510129a"
+              },
+              "type": "Foreach"
+            },
+            "List_rows_-_Specialization_Area": {
+              "runAfter": {
+                "Apply_to_each_2": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "d31c2eda-c39a-4918-b563-442c124e52b5"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_specializationareas",
+                  "$filter": "cr6b0_specializationarealead eq '@{trim(first(split(items('Apply_to_each')?['SA'], ' (')))}'",
+                  "$top": 1
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Apply_to_each_3": {
+              "foreach": "@outputs('List_rows_-_Specialization_Area')?['body/value']",
+              "actions": {
+                "Set_variable_-_SA_ID": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "9e8a8292-c3e0-447e-8fbe-ee4a8d031868"
+                  },
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "SA ID",
+                    "value": "@items('Apply_to_each_3')?['cr6b0_specializationareaid']"
+                  }
+                }
+              },
+              "runAfter": {
+                "List_rows_-_Specialization_Area": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "80e04f54-0e51-45b7-949f-6afa1e03cc42"
+              },
+              "type": "Foreach"
+            },
+            "List_rows_-_Consultants": {
+              "runAfter": {
+                "Apply_to_each_3": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "36abcc39-7c7e-48a5-bdde-c2373a586e07"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_consultants",
+                  "$filter": "cr6b0_email eq '@{items('Apply_to_each')?['Email']}'",
+                  "$top": 1
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Apply_to_each_4": {
+              "foreach": "@outputs('List_rows_-_Consultants')?['body/value']",
+              "actions": {
+                "Set_variable_-_Consultant_ID": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "6a14b3fa-8f51-4d6c-91b2-ee5c385662cd"
+                  },
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "Consultant ID",
+                    "value": "@items('Apply_to_each_4')?['cr6b0_consultantid']"
+                  }
+                }
+              },
+              "runAfter": {
+                "List_rows_-_Consultants": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "f9c203d6-2367-4be1-ab0e-245587bc82b1"
+              },
+              "type": "Foreach"
+            },
+            "List_rows_-_Consultant_Skills": {
+              "runAfter": {
+                "Apply_to_each_4": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "bd042396-57b6-4132-83b6-3129d6325e63"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_consultantskills",
+                  "$filter": "_cr6b0_consultantid_value eq '@{variables('Consultant ID')}' and _cr6b0_skill_value eq '@{variables('Skill ID')}'",
+                  "$top": 1
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Apply_to_each_5": {
+              "foreach": "@outputs('List_rows_-_Consultant_Skills')?['body/value']",
+              "actions": {
+                "Set_variable_-_Consultant_Skill_ID": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "67231d2a-0adc-4610-8bc0-9240a9f45c11"
+                  },
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "Consultant Skill ID",
+                    "value": "@items('Apply_to_each_5')?['cr6b0_consultantskillid']"
+                  }
+                }
+              },
+              "runAfter": {
+                "List_rows_-_Consultant_Skills": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "523d9678-fbea-451d-8c51-1e4b10ce752b"
+              },
+              "type": "Foreach"
+            },
+            "Upsert_a_row_-_Consultant_Skills": {
+              "runAfter": {
+                "Apply_to_each_5": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "46eaf99d-431a-4e99-89b9-170fbf899c0f"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "UpdateRecord",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_consultantskills",
+                  "recordId": "@variables('Consultant Skill ID')",
+                  "item/cr6b0_ConsultantID@odata.bind": "@concat('cr6b0_consultants(', variables('Consultant ID'), ')')",
+                  "item/cr6b0_proficiencylevel": "@if(\r\n  equals(items('Apply_to_each')?['Expertise Level'], 'Beginner'),\r\n  1,\r\n  if(\r\n    equals(items('Apply_to_each')?['Expertise Level'], 'Foundational'),\r\n    2,\r\n    if(\r\n      equals(items('Apply_to_each')?['Expertise Level'], 'Intermediate'),\r\n      3,\r\n      if(\r\n        equals(items('Apply_to_each')?['Expertise Level'], 'Expert'),\r\n        4,\r\n        1\r\n      )\r\n    )\r\n  )\r\n)",
+                  "item/cr6b0_Skill@odata.bind": "@concat('cr6b0_skills(', variables('Skill ID'), ')')",
+                  "item/cr6b0_skilllevel": "@int(items('Apply_to_each')?['Skill Level'])",
+                  "item/cr6b0_Specialization_Area@odata.bind": "@concat('cr6b0_specializationareas(', variables('SA ID'), ')')",
+                  "item/cr6b0_yearsofexperience": "@int(items('Apply_to_each')?['Skill Years'])"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Set_variable_-_Consultant_Skill_ID_2": {
+              "runAfter": {
+                "Upsert_a_row_-_Consultant_Skills": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "b8a80c86-8133-4542-b9b7-9fba19145b15"
+              },
+              "type": "SetVariable",
+              "inputs": {
+                "name": "Consultant Skill ID",
+                "value": "@{guid()}"
+              }
+            }
+          },
+          "runAfter": {
+            "Initialize_variable_-_Consultant_Skill_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "9afc9ce4-d09e-4787-80ec-d4829e5cce18"
+          },
+          "type": "Foreach"
+        },
+        "Initialize_variable_-_Consultant_Skill_ID": {
+          "runAfter": {
+            "Initialize_variable_-_Consultant_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "44bd3184-8eb3-427c-bf65-dd558711bd12"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Consultant Skill ID",
+                "type": "string",
+                "value": "@{guid()}"
+              }
+            ]
+          }
+        },
+        "Initialize_variable_-_Consultant_ID": {
+          "runAfter": {
+            "Initialize_variable_-_SA_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "28fa0b36-60b4-4fe2-9bbe-d3672e634e3c"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Consultant ID",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "Send_an_email_(V2)": {
+          "runAfter": {
+            "Run_a_Child_Flow": [
+              "Failed",
+              "TimedOut"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "8237b928-1bb1-4610-9ae3-49ab7e95e42f"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_office365_1",
+              "operationId": "SendEmailV2",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+            },
+            "parameters": {
+              "emailMessage/To": "jrojas@nextant.com;ssangal@nextant.com",
+              "emailMessage/Subject": "Consultants Skills flow has failed due to an authentication error",
+              "emailMessage/Body": "<p>The Get Information UKG - Consultants Skills flow has failed, pelase review it on the Power Automate site.</p>",
+              "emailMessage/Cc": "emonsalve@nextant.com",
+              "emailMessage/Importance": "Normal"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Send_an_email_(V2)_2": {
+          "runAfter": {
+            "Apply_to_each": [
+              "Failed",
+              "TimedOut"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "8237b928-1bb1-4610-9ae3-49ab7e95e42f"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_office365_1",
+              "operationId": "SendEmailV2",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+            },
+            "parameters": {
+              "emailMessage/To": "jrojas@nextant.com;ssangal@nextant.com",
+              "emailMessage/Subject": "Consultants Skills flow has failed",
+              "emailMessage/Body": "<p>The Get Information UKG - Consultants Skills flow has failed, pelase review it on the Power Automate site.</p>",
+              "emailMessage/Importance": "Normal"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      },
+      "outputs": {}
+    },
+    "templateName": ""
+  },
+  "schemaVersion": "1.0.0.0"
+}

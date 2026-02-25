@@ -1,0 +1,974 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr6b0_sharedcommondataserviceforapps_17284"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      },
+      "shared_commondataserviceforapps_1": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "crbf0_sharedcommondataserviceforapps_babc0"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      },
+      "shared_commondataserviceforapps_2": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "new_sharedcommondataserviceforapps_2700a"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "When_a_row_is_added,_modified_or_deleted_-_Project_Resourcing": {
+          "metadata": {
+            "operationMetadataId": "88615985-5841-4a61-b7da-d0de51e8574c"
+          },
+          "type": "OpenApiConnectionWebhook",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "SubscribeWebhookTrigger",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "subscriptionRequest/message": 7,
+              "subscriptionRequest/entityname": "cr6b0_projectresourcing",
+              "subscriptionRequest/scope": 4,
+              "subscriptionRequest/filterexpression": "cr6b0_usedforreporting ne 1 and _modifiedby_value ne 194398d9-aacb-f011-bbd3-000d3a599163 and _modifiedby_value ne 5414f6d7-7fcc-f011-bbd3-7c1e521680bd"
+            },
+            "authentication": "@parameters('$authentication')"
+          },
+          "runtimeConfiguration": {
+            "concurrency": {
+              "runs": 1
+            }
+          }
+        }
+      },
+      "actions": {
+        "Get_a_row_by_ID_-_Projects": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "a9f9ec00-18cb-4e3f-8f37-f5464cc2b7f7"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "GetItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "entityName": "cr6b0_projects",
+              "recordId": "@triggerOutputs()?['body/_cr6b0_relatedproject_value']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Condition": {
+          "actions": {},
+          "runAfter": {
+            "List_rows_-_Projects": [
+              "Succeeded"
+            ]
+          },
+          "else": {
+            "actions": {
+              "Condition_3": {
+                "actions": {
+                  "List_rows_-_Projects_2": {
+                    "runAfter": {},
+                    "metadata": {
+                      "operationMetadataId": "8826a471-82d4-4d5e-9c04-9e43eefe2e6a"
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "connectionName": "shared_commondataserviceforapps",
+                        "operationId": "ListRecords",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                      },
+                      "parameters": {
+                        "entityName": "cr6b0_projects",
+                        "$filter": "_cr6b0_parentproject_value eq '@{outputs('Get_a_row_by_ID_-_Projects')?['body/_cr6b0_parentproject_value']}'"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    }
+                  },
+                  "Apply_to_each_4": {
+                    "foreach": "@outputs('List_rows_-_Project_Resourcing_2')?['body/value']",
+                    "actions": {
+                      "Condition_4": {
+                        "actions": {},
+                        "runAfter": {},
+                        "else": {
+                          "actions": {
+                            "List_rows_-_Project_Resourcing_3": {
+                              "runAfter": {},
+                              "metadata": {
+                                "operationMetadataId": "31b79f59-86db-48bb-878f-4f04eb2118f8"
+                              },
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "host": {
+                                  "connectionName": "shared_commondataserviceforapps",
+                                  "operationId": "ListRecords",
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                                },
+                                "parameters": {
+                                  "entityName": "cr6b0_projectresourcings",
+                                  "$filter": "(_cr6b0_relatedproject_value eq '@{outputs('Get_a_row_by_ID_-_Projects')?['body/cr6b0_projectid']}'@{variables('Parent Project')}@{variables('Child Project')}) and cr6b0_usedforreporting eq 1 and _cr6b0_consultant_value eq '@{triggerOutputs()?['body/_cr6b0_consultant_value']}' and cr6b0_quotedtype eq @{items('Apply_to_each_4')?['quotedtype']}",
+                                  "$top": 1
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            },
+                            "Apply_to_each_5": {
+                              "foreach": "@outputs('List_rows_-_Project_Resourcing_3')?['body/value']",
+                              "actions": {
+                                "Set_variable_-_Project_Resourcing_ID": {
+                                  "runAfter": {},
+                                  "metadata": {
+                                    "operationMetadataId": "36c3257d-5c0f-42dc-b57c-106202382c8b"
+                                  },
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "name": "Project Resourcing ID",
+                                    "value": "@items('Apply_to_each_5')?['cr6b0_projectresourcingid']"
+                                  }
+                                }
+                              },
+                              "runAfter": {
+                                "List_rows_-_Project_Resourcing_3": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "metadata": {
+                                "operationMetadataId": "cda93ac6-52cf-4c4c-a64c-029e48abe3ef"
+                              },
+                              "type": "Foreach"
+                            },
+                            "Upsert_a_row_-_Project_Resourcing": {
+                              "runAfter": {
+                                "Apply_to_each_5": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "metadata": {
+                                "operationMetadataId": "561e09bd-7707-4063-b727-aa4453fdfea0"
+                              },
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "host": {
+                                  "connectionName": "shared_commondataserviceforapps_1",
+                                  "operationId": "UpdateRecord",
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                                },
+                                "parameters": {
+                                  "entityName": "cr6b0_projectresourcings",
+                                  "recordId": "@variables('Project Resourcing ID')",
+                                  "item/cr6b0_april": "@items('Apply_to_each_4')?['april']",
+                                  "item/cr6b0_august": "@items('Apply_to_each_4')?['august']",
+                                  "item/cr6b0_Consultant@odata.bind": "/cr6b0_consultants(@{triggerOutputs()?['body/_cr6b0_consultant_value']})",
+                                  "item/cr6b0_december": "@items('Apply_to_each_4')?['december']",
+                                  "item/cr6b0_enddate": "@items('Apply_to_each_4')?['max_enddate']",
+                                  "item/cr6b0_february": "@items('Apply_to_each_4')?['february']",
+                                  "item/cr6b0_fiscalyear": "@outputs('Compose_-_FY')",
+                                  "item/cr6b0_january": "@items('Apply_to_each_4')?['january']",
+                                  "item/cr6b0_july": "@items('Apply_to_each_4')?['july']",
+                                  "item/cr6b0_june": "@items('Apply_to_each_4')?['june']",
+                                  "item/cr6b0_march": "@items('Apply_to_each_4')?['march']",
+                                  "item/cr6b0_may": "@items('Apply_to_each_4')?['may']",
+                                  "item/cr6b0_november": "@items('Apply_to_each_4')?['november']",
+                                  "item/cr6b0_october": "@items('Apply_to_each_4')?['october']",
+                                  "item/cr6b0_quotedtype": "@items('Apply_to_each_4')?['quotedtype']",
+                                  "item/cr6b0_RelatedProject@odata.bind": "/cr6b0_projects(@{outputs('Get_a_row_by_ID_-_Projects')?['body/_cr6b0_parentproject_value']})",
+                                  "item/cr6b0_september": "@items('Apply_to_each_4')?['september']",
+                                  "item/cr6b0_startdate": "@items('Apply_to_each_4')?['min_startdate']",
+                                  "item/cr6b0_usedforreporting": 1,
+                                  "item/cr6b0_week1": "@items('Apply_to_each_4')?['week1']",
+                                  "item/cr6b0_week10": "@items('Apply_to_each_4')?['week10']",
+                                  "item/cr6b0_week11": "@items('Apply_to_each_4')?['week11']",
+                                  "item/cr6b0_week12": "@items('Apply_to_each_4')?['week12']",
+                                  "item/cr6b0_week13": "@items('Apply_to_each_4')?['week13']",
+                                  "item/cr6b0_week14": "@items('Apply_to_each_4')?['week14']",
+                                  "item/cr6b0_week15": "@items('Apply_to_each_4')?['week15']",
+                                  "item/cr6b0_week16": "@items('Apply_to_each_4')?['week16']",
+                                  "item/cr6b0_week17": "@items('Apply_to_each_4')?['week17']",
+                                  "item/cr6b0_week18": "@items('Apply_to_each_4')?['week18']",
+                                  "item/cr6b0_week19": "@items('Apply_to_each_4')?['week19']",
+                                  "item/cr6b0_week2": "@items('Apply_to_each_4')?['week2']",
+                                  "item/cr6b0_week20": "@items('Apply_to_each_4')?['week20']",
+                                  "item/cr6b0_week21": "@items('Apply_to_each_4')?['week21']",
+                                  "item/cr6b0_week22": "@items('Apply_to_each_4')?['week22']",
+                                  "item/cr6b0_week23": "@items('Apply_to_each_4')?['week23']",
+                                  "item/cr6b0_week24": "@items('Apply_to_each_4')?['week24']",
+                                  "item/cr6b0_week25": "@items('Apply_to_each_4')?['week25']",
+                                  "item/cr6b0_week26": "@items('Apply_to_each_4')?['week26']",
+                                  "item/cr6b0_week27": "@items('Apply_to_each_4')?['week27']",
+                                  "item/cr6b0_week28": "@items('Apply_to_each_4')?['week28']",
+                                  "item/cr6b0_week29": "@items('Apply_to_each_4')?['week29']",
+                                  "item/cr6b0_week3": "@items('Apply_to_each_4')?['week3']",
+                                  "item/cr6b0_week30": "@items('Apply_to_each_4')?['week30']",
+                                  "item/cr6b0_week31": "@items('Apply_to_each_4')?['week31']",
+                                  "item/cr6b0_week32": "@items('Apply_to_each_4')?['week32']",
+                                  "item/cr6b0_week33": "@items('Apply_to_each_4')?['week33']",
+                                  "item/cr6b0_week34": "@items('Apply_to_each_4')?['week34']",
+                                  "item/cr6b0_week35": "@items('Apply_to_each_4')?['week35']",
+                                  "item/cr6b0_week36": "@items('Apply_to_each_4')?['week36']",
+                                  "item/cr6b0_week37": "@items('Apply_to_each_4')?['week37']",
+                                  "item/cr6b0_week38": "@items('Apply_to_each_4')?['week38']",
+                                  "item/cr6b0_week39": "@items('Apply_to_each_4')?['week39']",
+                                  "item/cr6b0_week4": "@items('Apply_to_each_4')?['week4']",
+                                  "item/cr6b0_week40": "@items('Apply_to_each_4')?['week40']",
+                                  "item/cr6b0_week41": "@items('Apply_to_each_4')?['week41']",
+                                  "item/cr6b0_week42": "@items('Apply_to_each_4')?['week42']",
+                                  "item/cr6b0_week43": "@items('Apply_to_each_4')?['week43']",
+                                  "item/cr6b0_week44": "@items('Apply_to_each_4')?['week44']",
+                                  "item/cr6b0_week45": "@items('Apply_to_each_4')?['week45']",
+                                  "item/cr6b0_week46": "@items('Apply_to_each_4')?['week46']",
+                                  "item/cr6b0_week47": "@items('Apply_to_each_4')?['week47']",
+                                  "item/cr6b0_week48": "@items('Apply_to_each_4')?['week48']",
+                                  "item/cr6b0_week49": "@items('Apply_to_each_4')?['week49']",
+                                  "item/cr6b0_week5": "@items('Apply_to_each_4')?['week5']",
+                                  "item/cr6b0_week50": "@items('Apply_to_each_4')?['week50']",
+                                  "item/cr6b0_week51": "@items('Apply_to_each_4')?['week51']",
+                                  "item/cr6b0_week52": "@items('Apply_to_each_4')?['week52']",
+                                  "item/cr6b0_week53": "@items('Apply_to_each_4')?['week53']",
+                                  "item/cr6b0_week6": "@items('Apply_to_each_4')?['week6']",
+                                  "item/cr6b0_week7": "@items('Apply_to_each_4')?['week7']",
+                                  "item/cr6b0_week8": "@items('Apply_to_each_4')?['week8']",
+                                  "item/cr6b0_week9": "@items('Apply_to_each_4')?['week9']"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            },
+                            "Set_variable_-_Project_Resourcing_ID_3": {
+                              "runAfter": {
+                                "Upsert_a_row_-_Project_Resourcing": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "metadata": {
+                                "operationMetadataId": "cf8a6a71-089d-4624-8ca5-89b9baff2dda"
+                              },
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "Project Resourcing ID",
+                                "value": "@{guid()}"
+                              }
+                            },
+                            "List_rows_-_Project_Resourcing_6": {
+                              "runAfter": {
+                                "Set_variable_-_Project_Resourcing_ID_3": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "metadata": {
+                                "operationMetadataId": "31b79f59-86db-48bb-878f-4f04eb2118f8"
+                              },
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "host": {
+                                  "connectionName": "shared_commondataserviceforapps",
+                                  "operationId": "ListRecords",
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                                },
+                                "parameters": {
+                                  "entityName": "cr6b0_projectresourcings",
+                                  "$filter": "(_cr6b0_relatedproject_value eq '@{outputs('Get_a_row_by_ID_-_Projects')?['body/cr6b0_projectid']}'@{variables('Parent Project')}@{variables('Child Project')}) and cr6b0_usedforreporting ne 1 and _cr6b0_consultant_value eq '@{triggerOutputs()?['body/_cr6b0_consultant_value']}' and cr6b0_quotedtype eq @{items('Apply_to_each_4')?['quotedtype']}"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            },
+                            "Apply_to_each_9": {
+                              "foreach": "@outputs('List_rows_-_Project_Resourcing_6')?['body/value']",
+                              "actions": {
+                                "Update_a_row_-_Project_Resourcing": {
+                                  "runAfter": {},
+                                  "metadata": {
+                                    "operationMetadataId": "2cff09a5-566a-4f00-8dcf-ea831c57046b"
+                                  },
+                                  "type": "OpenApiConnection",
+                                  "inputs": {
+                                    "host": {
+                                      "connectionName": "shared_commondataserviceforapps_2",
+                                      "operationId": "UpdateOnlyRecord",
+                                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                                    },
+                                    "parameters": {
+                                      "entityName": "cr6b0_projectresourcings",
+                                      "recordId": "@items('Apply_to_each_9')?['cr6b0_projectresourcingid']",
+                                      "item/cr6b0_usedforreporting": 2
+                                    },
+                                    "authentication": "@parameters('$authentication')"
+                                  }
+                                }
+                              },
+                              "runAfter": {
+                                "List_rows_-_Project_Resourcing_6": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "metadata": {
+                                "operationMetadataId": "de80af4b-e4c5-4501-bd23-f8db2590889c"
+                              },
+                              "type": "Foreach"
+                            }
+                          }
+                        },
+                        "expression": {
+                          "equals": [
+                            "@items('Apply_to_each_4')?['quotedtype']",
+                            "@null"
+                          ]
+                        },
+                        "metadata": {
+                          "operationMetadataId": "2a5c5044-9ec0-47f4-93b2-4a8df6fba4dd"
+                        },
+                        "type": "If"
+                      }
+                    },
+                    "runAfter": {
+                      "List_rows_-_Project_Resourcing_2": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "84be9051-a180-428b-9090-e35e044a6fda"
+                    },
+                    "type": "Foreach"
+                  },
+                  "List_rows_-_Project_Resourcing_2": {
+                    "runAfter": {
+                      "Compose_-_FY": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "b7defc9b-a4fc-4372-91fe-bf91cd573204"
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "connectionName": "shared_commondataserviceforapps",
+                        "operationId": "ListRecords",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                      },
+                      "parameters": {
+                        "entityName": "cr6b0_projectresourcings",
+                        "$filter": "(_cr6b0_relatedproject_value eq '@{outputs('Get_a_row_by_ID_-_Projects')?['body/cr6b0_projectid']}'@{variables('Parent Project')}@{variables('Child Project')}) and cr6b0_usedforreporting ne 1 and _cr6b0_consultant_value eq '@{triggerOutputs()?['body/_cr6b0_consultant_value']}'",
+                        "fetchXml": "<fetch distinct=\"false\" aggregate=\"true\">\n  <entity name=\"cr6b0_projectresourcing\">\n    \n    <!-- Group By Quoted Type-->\n    <attribute name=\"cr6b0_quotedtype\" groupby=\"true\" alias=\"quotedtype\"\n/>\n\n    <!-- Months -->\n    <attribute name=\"cr6b0_january\" aggregate=\"sum\" alias=\"january\" />\n    <attribute name=\"cr6b0_february\" aggregate=\"sum\" alias=\"february\" />\n    <attribute name=\"cr6b0_march\" aggregate=\"sum\" alias=\"march\" />\n    <attribute name=\"cr6b0_april\" aggregate=\"sum\" alias=\"april\" />\n    <attribute name=\"cr6b0_may\" aggregate=\"sum\" alias=\"may\" />\n    <attribute name=\"cr6b0_june\" aggregate=\"sum\" alias=\"june\" />\n    <attribute name=\"cr6b0_july\" aggregate=\"sum\" alias=\"july\" />\n    <attribute name=\"cr6b0_august\" aggregate=\"sum\" alias=\"august\" />\n    <attribute name=\"cr6b0_september\" aggregate=\"sum\" alias=\"september\" />\n    <attribute name=\"cr6b0_october\" aggregate=\"sum\" alias=\"october\" />\n    <attribute name=\"cr6b0_november\" aggregate=\"sum\" alias=\"november\" />\n    <attribute name=\"cr6b0_december\" aggregate=\"sum\" alias=\"december\" />\n\n    <!-- Weeks 1–53 -->\n    <attribute name=\"cr6b0_week1\" aggregate=\"sum\" alias=\"week1\" />\n    <attribute name=\"cr6b0_week2\" aggregate=\"sum\" alias=\"week2\" />\n    <attribute name=\"cr6b0_week3\" aggregate=\"sum\" alias=\"week3\" />\n    <attribute name=\"cr6b0_week4\" aggregate=\"sum\" alias=\"week4\" />\n    <attribute name=\"cr6b0_week5\" aggregate=\"sum\" alias=\"week5\" />\n    <attribute name=\"cr6b0_week6\" aggregate=\"sum\" alias=\"week6\" />\n    <attribute name=\"cr6b0_week7\" aggregate=\"sum\" alias=\"week7\" />\n    <attribute name=\"cr6b0_week8\" aggregate=\"sum\" alias=\"week8\" />\n    <attribute name=\"cr6b0_week9\" aggregate=\"sum\" alias=\"week9\" />\n    <attribute name=\"cr6b0_week10\" aggregate=\"sum\" alias=\"week10\" />\n    <attribute name=\"cr6b0_week11\" aggregate=\"sum\" alias=\"week11\" />\n    <attribute name=\"cr6b0_week12\" aggregate=\"sum\" alias=\"week12\" />\n    <attribute name=\"cr6b0_week13\" aggregate=\"sum\" alias=\"week13\" />\n    <attribute name=\"cr6b0_week14\" aggregate=\"sum\" alias=\"week14\" />\n    <attribute name=\"cr6b0_week15\" aggregate=\"sum\" alias=\"week15\" />\n    <attribute name=\"cr6b0_week16\" aggregate=\"sum\" alias=\"week16\" />\n    <attribute name=\"cr6b0_week17\" aggregate=\"sum\" alias=\"week17\" />\n    <attribute name=\"cr6b0_week18\" aggregate=\"sum\" alias=\"week18\" />\n    <attribute name=\"cr6b0_week19\" aggregate=\"sum\" alias=\"week19\" />\n    <attribute name=\"cr6b0_week20\" aggregate=\"sum\" alias=\"week20\" />\n    <attribute name=\"cr6b0_week21\" aggregate=\"sum\" alias=\"week21\" />\n    <attribute name=\"cr6b0_week22\" aggregate=\"sum\" alias=\"week22\" />\n    <attribute name=\"cr6b0_week23\" aggregate=\"sum\" alias=\"week23\" />\n    <attribute name=\"cr6b0_week24\" aggregate=\"sum\" alias=\"week24\" />\n    <attribute name=\"cr6b0_week25\" aggregate=\"sum\" alias=\"week25\" />\n    <attribute name=\"cr6b0_week26\" aggregate=\"sum\" alias=\"week26\" />\n    <attribute name=\"cr6b0_week27\" aggregate=\"sum\" alias=\"week27\" />\n    <attribute name=\"cr6b0_week28\" aggregate=\"sum\" alias=\"week28\" />\n    <attribute name=\"cr6b0_week29\" aggregate=\"sum\" alias=\"week29\" />\n    <attribute name=\"cr6b0_week30\" aggregate=\"sum\" alias=\"week30\" />\n    <attribute name=\"cr6b0_week31\" aggregate=\"sum\" alias=\"week31\" />\n    <attribute name=\"cr6b0_week32\" aggregate=\"sum\" alias=\"week32\" />\n    <attribute name=\"cr6b0_week33\" aggregate=\"sum\" alias=\"week33\" />\n    <attribute name=\"cr6b0_week34\" aggregate=\"sum\" alias=\"week34\" />\n    <attribute name=\"cr6b0_week35\" aggregate=\"sum\" alias=\"week35\" />\n    <attribute name=\"cr6b0_week36\" aggregate=\"sum\" alias=\"week36\" />\n    <attribute name=\"cr6b0_week37\" aggregate=\"sum\" alias=\"week37\" />\n    <attribute name=\"cr6b0_week38\" aggregate=\"sum\" alias=\"week38\" />\n    <attribute name=\"cr6b0_week39\" aggregate=\"sum\" alias=\"week39\" />\n    <attribute name=\"cr6b0_week40\" aggregate=\"sum\" alias=\"week40\" />\n    <attribute name=\"cr6b0_week41\" aggregate=\"sum\" alias=\"week41\" />\n    <attribute name=\"cr6b0_week42\" aggregate=\"sum\" alias=\"week42\" />\n    <attribute name=\"cr6b0_week43\" aggregate=\"sum\" alias=\"week43\" />\n    <attribute name=\"cr6b0_week44\" aggregate=\"sum\" alias=\"week44\" />\n    <attribute name=\"cr6b0_week45\" aggregate=\"sum\" alias=\"week45\" />\n    <attribute name=\"cr6b0_week46\" aggregate=\"sum\" alias=\"week46\" />\n    <attribute name=\"cr6b0_week47\" aggregate=\"sum\" alias=\"week47\" />\n    <attribute name=\"cr6b0_week48\" aggregate=\"sum\" alias=\"week48\" />\n    <attribute name=\"cr6b0_week49\" aggregate=\"sum\" alias=\"week49\" />\n    <attribute name=\"cr6b0_week50\" aggregate=\"sum\" alias=\"week50\" />\n    <attribute name=\"cr6b0_week51\" aggregate=\"sum\" alias=\"week51\" />\n    <attribute name=\"cr6b0_week52\" aggregate=\"sum\" alias=\"week52\" />\n    <attribute name=\"cr6b0_week53\" aggregate=\"sum\" alias=\"week53\" />\n\n    <!-- Min and Max Dates -->\n    <attribute name=\"cr6b0_startdate\" aggregate=\"min\" alias=\"min_startdate\" />\n    <attribute name=\"cr6b0_enddate\" aggregate=\"max\" alias=\"max_enddate\" />\n\n  </entity>\n</fetch>\n"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    }
+                  },
+                  "Apply_to_each_6": {
+                    "foreach": "@outputs('List_rows_-_Projects_2')?['body/value']",
+                    "actions": {
+                      "Append_to_string_variable_-_Child_Project": {
+                        "runAfter": {},
+                        "metadata": {
+                          "operationMetadataId": "33f5ea14-faab-482f-bcbe-1d5c4ce4d8e2"
+                        },
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                          "name": "Child Project",
+                          "value": "@if(\r\n  not(empty(items('Apply_to_each_6')?['cr6b0_projectid'])),\r\n  concat(' or _cr6b0_relatedproject_value eq ''', items('Apply_to_each_6')?['cr6b0_projectid'], ''''),\r\n  ''\r\n)"
+                        }
+                      }
+                    },
+                    "runAfter": {
+                      "List_rows_-_Projects_2": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "25c0844a-b022-45c5-b3be-ee488964df0d"
+                    },
+                    "type": "Foreach"
+                  },
+                  "List_rows_-_Project_Resourcing_4": {
+                    "runAfter": {
+                      "Apply_to_each_6": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "b7defc9b-a4fc-4372-91fe-bf91cd573204"
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "connectionName": "shared_commondataserviceforapps",
+                        "operationId": "ListRecords",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                      },
+                      "parameters": {
+                        "entityName": "cr6b0_projectresourcings",
+                        "$filter": "(_cr6b0_relatedproject_value eq '@{outputs('Get_a_row_by_ID_-_Projects')?['body/cr6b0_projectid']}'@{variables('Parent Project')}@{variables('Child Project')}) and cr6b0_usedforreporting ne 1 and _cr6b0_consultant_value eq '@{triggerOutputs()?['body/_cr6b0_consultant_value']}'",
+                        "$orderby": "cr6b0_fiscalyear desc",
+                        "$top": 1
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    }
+                  },
+                  "Apply_to_each_7": {
+                    "foreach": "@outputs('List_rows_-_Project_Resourcing_4')?['body/value']",
+                    "actions": {
+                      "Set_variable_-_FY": {
+                        "runAfter": {},
+                        "metadata": {
+                          "operationMetadataId": "66c17b19-abc7-4841-a5ad-75997ce7df6b"
+                        },
+                        "type": "SetVariable",
+                        "inputs": {
+                          "name": "FY",
+                          "value": "@{items('Apply_to_each_7')?['cr6b0_fiscalyear']}"
+                        }
+                      }
+                    },
+                    "runAfter": {
+                      "List_rows_-_Project_Resourcing_4": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "01970004-65a5-4e3d-bdc6-e1d5aad4ae43"
+                    },
+                    "type": "Foreach"
+                  },
+                  "Compose_-_FY": {
+                    "runAfter": {
+                      "Apply_to_each_7": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "13d47e1e-1c13-46fb-9a14-e2a88b8e2f1b"
+                    },
+                    "type": "Compose",
+                    "inputs": "@variables('FY')"
+                  }
+                },
+                "runAfter": {},
+                "else": {
+                  "actions": {
+                    "Apply_to_each": {
+                      "foreach": "@outputs('List_rows_-_Projects')?['body/value']",
+                      "actions": {
+                        "Apply_to_each_2": {
+                          "foreach": "@outputs('List_rows_-_Project_Resourcing')?['body/value']",
+                          "actions": {
+                            "Condition_2": {
+                              "actions": {},
+                              "runAfter": {},
+                              "else": {
+                                "actions": {
+                                  "List_rows_-_Project_Resourcing_1": {
+                                    "runAfter": {},
+                                    "metadata": {
+                                      "operationMetadataId": "31b79f59-86db-48bb-878f-4f04eb2118f8"
+                                    },
+                                    "type": "OpenApiConnection",
+                                    "inputs": {
+                                      "host": {
+                                        "connectionName": "shared_commondataserviceforapps",
+                                        "operationId": "ListRecords",
+                                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                                      },
+                                      "parameters": {
+                                        "entityName": "cr6b0_projectresourcings",
+                                        "$filter": "(_cr6b0_relatedproject_value eq '@{outputs('Get_a_row_by_ID_-_Projects')?['body/cr6b0_projectid']}'@{variables('Parent Project')}@{variables('Child Project')}) and cr6b0_usedforreporting eq 1 and _cr6b0_consultant_value eq '@{triggerOutputs()?['body/_cr6b0_consultant_value']}' and cr6b0_quotedtype eq @{items('Apply_to_each_2')?['quotedtype']}",
+                                        "$top": 1
+                                      },
+                                      "authentication": "@parameters('$authentication')"
+                                    }
+                                  },
+                                  "Apply_to_each_3": {
+                                    "foreach": "@outputs('List_rows_-_Project_Resourcing_1')?['body/value']",
+                                    "actions": {
+                                      "Set_variable_-_Project_Resourcing_ID_2": {
+                                        "runAfter": {},
+                                        "metadata": {
+                                          "operationMetadataId": "b8d87b14-dadf-4bdd-b00e-2c51d949ee93"
+                                        },
+                                        "type": "SetVariable",
+                                        "inputs": {
+                                          "name": "Project Resourcing ID",
+                                          "value": "@items('Apply_to_each_3')?['cr6b0_projectresourcingid']"
+                                        }
+                                      }
+                                    },
+                                    "runAfter": {
+                                      "List_rows_-_Project_Resourcing_1": [
+                                        "Succeeded"
+                                      ]
+                                    },
+                                    "metadata": {
+                                      "operationMetadataId": "cda93ac6-52cf-4c4c-a64c-029e48abe3ef"
+                                    },
+                                    "type": "Foreach"
+                                  },
+                                  "Upsert_a_row_-_Project_Resourcing_2": {
+                                    "runAfter": {
+                                      "Apply_to_each_3": [
+                                        "Succeeded"
+                                      ]
+                                    },
+                                    "metadata": {
+                                      "operationMetadataId": "b0e7bbb6-1897-43ea-bdbe-e23e34c538e3"
+                                    },
+                                    "type": "OpenApiConnection",
+                                    "inputs": {
+                                      "host": {
+                                        "connectionName": "shared_commondataserviceforapps_1",
+                                        "operationId": "UpdateRecord",
+                                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                                      },
+                                      "parameters": {
+                                        "entityName": "cr6b0_projectresourcings",
+                                        "recordId": "@variables('Project Resourcing ID')",
+                                        "item/cr6b0_april": "@items('Apply_to_each_2')?['april']",
+                                        "item/cr6b0_august": "@items('Apply_to_each_2')?['august']",
+                                        "item/cr6b0_Consultant@odata.bind": "/cr6b0_consultants(@{triggerOutputs()?['body/_cr6b0_consultant_value']})",
+                                        "item/cr6b0_december": "@items('Apply_to_each_2')?['december']",
+                                        "item/cr6b0_enddate": "@items('Apply_to_each_2')?['max_enddate']",
+                                        "item/cr6b0_february": "@items('Apply_to_each_2')?['february']",
+                                        "item/cr6b0_fiscalyear": "@outputs('Compose_-_FY_2')",
+                                        "item/cr6b0_january": "@items('Apply_to_each_2')?['january']",
+                                        "item/cr6b0_july": "@items('Apply_to_each_2')?['july']",
+                                        "item/cr6b0_june": "@items('Apply_to_each_2')?['june']",
+                                        "item/cr6b0_march": "@items('Apply_to_each_2')?['march']",
+                                        "item/cr6b0_may": "@items('Apply_to_each_2')?['may']",
+                                        "item/cr6b0_november": "@items('Apply_to_each_2')?['november']",
+                                        "item/cr6b0_october": "@items('Apply_to_each_2')?['october']",
+                                        "item/cr6b0_quotedtype": "@items('Apply_to_each_2')?['quotedtype']",
+                                        "item/cr6b0_RelatedProject@odata.bind": "/cr6b0_projects(@{triggerOutputs()?['body/_cr6b0_relatedproject_value']})",
+                                        "item/cr6b0_september": "@items('Apply_to_each_2')?['september']",
+                                        "item/cr6b0_startdate": "@items('Apply_to_each_2')?['min_startdate']",
+                                        "item/cr6b0_usedforreporting": 1,
+                                        "item/cr6b0_week1": "@items('Apply_to_each_2')?['week1']",
+                                        "item/cr6b0_week10": "@items('Apply_to_each_2')?['week10']",
+                                        "item/cr6b0_week11": "@items('Apply_to_each_2')?['week11']",
+                                        "item/cr6b0_week12": "@items('Apply_to_each_2')?['week12']",
+                                        "item/cr6b0_week13": "@items('Apply_to_each_2')?['week13']",
+                                        "item/cr6b0_week14": "@items('Apply_to_each_2')?['week14']",
+                                        "item/cr6b0_week15": "@items('Apply_to_each_2')?['week15']",
+                                        "item/cr6b0_week16": "@items('Apply_to_each_2')?['week16']",
+                                        "item/cr6b0_week17": "@items('Apply_to_each_2')?['week17']",
+                                        "item/cr6b0_week18": "@items('Apply_to_each_2')?['week18']",
+                                        "item/cr6b0_week19": "@items('Apply_to_each_2')?['week19']",
+                                        "item/cr6b0_week2": "@items('Apply_to_each_2')?['week2']",
+                                        "item/cr6b0_week20": "@items('Apply_to_each_2')?['week20']",
+                                        "item/cr6b0_week21": "@items('Apply_to_each_2')?['week21']",
+                                        "item/cr6b0_week22": "@items('Apply_to_each_2')?['week22']",
+                                        "item/cr6b0_week23": "@items('Apply_to_each_2')?['week23']",
+                                        "item/cr6b0_week24": "@items('Apply_to_each_2')?['week24']",
+                                        "item/cr6b0_week25": "@items('Apply_to_each_2')?['week25']",
+                                        "item/cr6b0_week26": "@items('Apply_to_each_2')?['week26']",
+                                        "item/cr6b0_week27": "@items('Apply_to_each_2')?['week27']",
+                                        "item/cr6b0_week28": "@items('Apply_to_each_2')?['week28']",
+                                        "item/cr6b0_week29": "@items('Apply_to_each_2')?['week29']",
+                                        "item/cr6b0_week3": "@items('Apply_to_each_2')?['week3']",
+                                        "item/cr6b0_week30": "@items('Apply_to_each_2')?['week30']",
+                                        "item/cr6b0_week31": "@items('Apply_to_each_2')?['week31']",
+                                        "item/cr6b0_week32": "@items('Apply_to_each_2')?['week32']",
+                                        "item/cr6b0_week33": "@items('Apply_to_each_2')?['week33']",
+                                        "item/cr6b0_week34": "@items('Apply_to_each_2')?['week34']",
+                                        "item/cr6b0_week35": "@items('Apply_to_each_2')?['week35']",
+                                        "item/cr6b0_week36": "@items('Apply_to_each_2')?['week36']",
+                                        "item/cr6b0_week37": "@items('Apply_to_each_2')?['week37']",
+                                        "item/cr6b0_week38": "@items('Apply_to_each_2')?['week38']",
+                                        "item/cr6b0_week39": "@items('Apply_to_each_2')?['week39']",
+                                        "item/cr6b0_week4": "@items('Apply_to_each_2')?['week4']",
+                                        "item/cr6b0_week40": "@items('Apply_to_each_2')?['week40']",
+                                        "item/cr6b0_week41": "@items('Apply_to_each_2')?['week41']",
+                                        "item/cr6b0_week42": "@items('Apply_to_each_2')?['week42']",
+                                        "item/cr6b0_week43": "@items('Apply_to_each_2')?['week43']",
+                                        "item/cr6b0_week44": "@items('Apply_to_each_2')?['week44']",
+                                        "item/cr6b0_week45": "@items('Apply_to_each_2')?['week45']",
+                                        "item/cr6b0_week46": "@items('Apply_to_each_2')?['week46']",
+                                        "item/cr6b0_week47": "@items('Apply_to_each_2')?['week47']",
+                                        "item/cr6b0_week48": "@items('Apply_to_each_2')?['week48']",
+                                        "item/cr6b0_week49": "@items('Apply_to_each_2')?['week49']",
+                                        "item/cr6b0_week5": "@items('Apply_to_each_2')?['week5']",
+                                        "item/cr6b0_week50": "@items('Apply_to_each_2')?['week50']",
+                                        "item/cr6b0_week51": "@items('Apply_to_each_2')?['week51']",
+                                        "item/cr6b0_week52": "@items('Apply_to_each_2')?['week52']",
+                                        "item/cr6b0_week53": "@items('Apply_to_each_2')?['week53']",
+                                        "item/cr6b0_week6": "@items('Apply_to_each_2')?['week6']",
+                                        "item/cr6b0_week7": "@items('Apply_to_each_2')?['week7']",
+                                        "item/cr6b0_week8": "@items('Apply_to_each_2')?['week8']",
+                                        "item/cr6b0_week9": "@items('Apply_to_each_2')?['week9']"
+                                      },
+                                      "authentication": "@parameters('$authentication')"
+                                    }
+                                  },
+                                  "Set_variable_-_Project_Resourcing_ID_4": {
+                                    "runAfter": {
+                                      "Upsert_a_row_-_Project_Resourcing_2": [
+                                        "Succeeded"
+                                      ]
+                                    },
+                                    "metadata": {
+                                      "operationMetadataId": "70cbe1f7-a811-48a3-ba37-2792e9443172"
+                                    },
+                                    "type": "SetVariable",
+                                    "inputs": {
+                                      "name": "Project Resourcing ID",
+                                      "value": "@{guid()}"
+                                    }
+                                  },
+                                  "List_rows_-_Project_Resourcing_7": {
+                                    "runAfter": {
+                                      "Set_variable_-_Project_Resourcing_ID_4": [
+                                        "Succeeded"
+                                      ]
+                                    },
+                                    "metadata": {
+                                      "operationMetadataId": "31b79f59-86db-48bb-878f-4f04eb2118f8"
+                                    },
+                                    "type": "OpenApiConnection",
+                                    "inputs": {
+                                      "host": {
+                                        "connectionName": "shared_commondataserviceforapps",
+                                        "operationId": "ListRecords",
+                                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                                      },
+                                      "parameters": {
+                                        "entityName": "cr6b0_projectresourcings",
+                                        "$filter": "(_cr6b0_relatedproject_value eq '@{outputs('Get_a_row_by_ID_-_Projects')?['body/cr6b0_projectid']}'@{variables('Parent Project')}@{variables('Child Project')}) and cr6b0_usedforreporting ne 1 and _cr6b0_consultant_value eq '@{triggerOutputs()?['body/_cr6b0_consultant_value']}' and cr6b0_quotedtype eq @{items('Apply_to_each_2')?['quotedtype']}"
+                                      },
+                                      "authentication": "@parameters('$authentication')"
+                                    }
+                                  },
+                                  "Apply_to_each_10": {
+                                    "foreach": "@outputs('List_rows_-_Project_Resourcing_7')?['body/value']",
+                                    "actions": {
+                                      "Update_a_row_-_Project_Resoucing_2": {
+                                        "runAfter": {},
+                                        "metadata": {
+                                          "operationMetadataId": "ecbcb6a9-3aca-4729-8be3-226112698ff9"
+                                        },
+                                        "type": "OpenApiConnection",
+                                        "inputs": {
+                                          "host": {
+                                            "connectionName": "shared_commondataserviceforapps_2",
+                                            "operationId": "UpdateOnlyRecord",
+                                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                                          },
+                                          "parameters": {
+                                            "entityName": "cr6b0_projectresourcings",
+                                            "recordId": "@items('Apply_to_each_10')?['cr6b0_projectresourcingid']",
+                                            "item/cr6b0_usedforreporting": 2
+                                          },
+                                          "authentication": "@parameters('$authentication')"
+                                        }
+                                      }
+                                    },
+                                    "runAfter": {
+                                      "List_rows_-_Project_Resourcing_7": [
+                                        "Succeeded"
+                                      ]
+                                    },
+                                    "metadata": {
+                                      "operationMetadataId": "48e80004-b404-4aaf-a350-d56a075c054f"
+                                    },
+                                    "type": "Foreach"
+                                  }
+                                }
+                              },
+                              "expression": {
+                                "equals": [
+                                  "@items('Apply_to_each_2')?['quotedtype']",
+                                  "@null"
+                                ]
+                              },
+                              "metadata": {
+                                "operationMetadataId": "2a5c5044-9ec0-47f4-93b2-4a8df6fba4dd"
+                              },
+                              "type": "If"
+                            }
+                          },
+                          "runAfter": {
+                            "List_rows_-_Project_Resourcing": [
+                              "Succeeded"
+                            ]
+                          },
+                          "metadata": {
+                            "operationMetadataId": "84be9051-a180-428b-9090-e35e044a6fda"
+                          },
+                          "type": "Foreach"
+                        },
+                        "Set_variable_-_Child_Project": {
+                          "runAfter": {},
+                          "metadata": {
+                            "operationMetadataId": "6bc4490b-64b4-4f31-b44e-535d9875ef7a"
+                          },
+                          "type": "SetVariable",
+                          "inputs": {
+                            "name": "Child Project",
+                            "value": "@{if(\r\n  not(empty(items('Apply_to_each')?['cr6b0_projectid'])),\r\n  concat(' or _cr6b0_relatedproject_value eq ''', items('Apply_to_each')?['cr6b0_projectid'], ''''),\r\n  ''\r\n)}"
+                          }
+                        },
+                        "List_rows_-_Project_Resourcing": {
+                          "runAfter": {
+                            "Compose_-_FY_2": [
+                              "Succeeded"
+                            ]
+                          },
+                          "metadata": {
+                            "operationMetadataId": "b7defc9b-a4fc-4372-91fe-bf91cd573204"
+                          },
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "host": {
+                              "connectionName": "shared_commondataserviceforapps",
+                              "operationId": "ListRecords",
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                            },
+                            "parameters": {
+                              "entityName": "cr6b0_projectresourcings",
+                              "$filter": "(_cr6b0_relatedproject_value eq '@{outputs('Get_a_row_by_ID_-_Projects')?['body/cr6b0_projectid']}'@{variables('Parent Project')}@{variables('Child Project')}) and cr6b0_usedforreporting ne 1 and _cr6b0_consultant_value eq '@{triggerOutputs()?['body/_cr6b0_consultant_value']}'",
+                              "fetchXml": "<fetch distinct=\"false\" aggregate=\"true\">\n  <entity name=\"cr6b0_projectresourcing\">\n    \n    <!-- Group By Quoted Type-->\n    <attribute name=\"cr6b0_quotedtype\" groupby=\"true\" alias=\"quotedtype\"\n/>\n\n    <!-- Months -->\n    <attribute name=\"cr6b0_january\" aggregate=\"sum\" alias=\"january\" />\n    <attribute name=\"cr6b0_february\" aggregate=\"sum\" alias=\"february\" />\n    <attribute name=\"cr6b0_march\" aggregate=\"sum\" alias=\"march\" />\n    <attribute name=\"cr6b0_april\" aggregate=\"sum\" alias=\"april\" />\n    <attribute name=\"cr6b0_may\" aggregate=\"sum\" alias=\"may\" />\n    <attribute name=\"cr6b0_june\" aggregate=\"sum\" alias=\"june\" />\n    <attribute name=\"cr6b0_july\" aggregate=\"sum\" alias=\"july\" />\n    <attribute name=\"cr6b0_august\" aggregate=\"sum\" alias=\"august\" />\n    <attribute name=\"cr6b0_september\" aggregate=\"sum\" alias=\"september\" />\n    <attribute name=\"cr6b0_october\" aggregate=\"sum\" alias=\"october\" />\n    <attribute name=\"cr6b0_november\" aggregate=\"sum\" alias=\"november\" />\n    <attribute name=\"cr6b0_december\" aggregate=\"sum\" alias=\"december\" />\n\n    <!-- Weeks 1–53 -->\n    <attribute name=\"cr6b0_week1\" aggregate=\"sum\" alias=\"week1\" />\n    <attribute name=\"cr6b0_week2\" aggregate=\"sum\" alias=\"week2\" />\n    <attribute name=\"cr6b0_week3\" aggregate=\"sum\" alias=\"week3\" />\n    <attribute name=\"cr6b0_week4\" aggregate=\"sum\" alias=\"week4\" />\n    <attribute name=\"cr6b0_week5\" aggregate=\"sum\" alias=\"week5\" />\n    <attribute name=\"cr6b0_week6\" aggregate=\"sum\" alias=\"week6\" />\n    <attribute name=\"cr6b0_week7\" aggregate=\"sum\" alias=\"week7\" />\n    <attribute name=\"cr6b0_week8\" aggregate=\"sum\" alias=\"week8\" />\n    <attribute name=\"cr6b0_week9\" aggregate=\"sum\" alias=\"week9\" />\n    <attribute name=\"cr6b0_week10\" aggregate=\"sum\" alias=\"week10\" />\n    <attribute name=\"cr6b0_week11\" aggregate=\"sum\" alias=\"week11\" />\n    <attribute name=\"cr6b0_week12\" aggregate=\"sum\" alias=\"week12\" />\n    <attribute name=\"cr6b0_week13\" aggregate=\"sum\" alias=\"week13\" />\n    <attribute name=\"cr6b0_week14\" aggregate=\"sum\" alias=\"week14\" />\n    <attribute name=\"cr6b0_week15\" aggregate=\"sum\" alias=\"week15\" />\n    <attribute name=\"cr6b0_week16\" aggregate=\"sum\" alias=\"week16\" />\n    <attribute name=\"cr6b0_week17\" aggregate=\"sum\" alias=\"week17\" />\n    <attribute name=\"cr6b0_week18\" aggregate=\"sum\" alias=\"week18\" />\n    <attribute name=\"cr6b0_week19\" aggregate=\"sum\" alias=\"week19\" />\n    <attribute name=\"cr6b0_week20\" aggregate=\"sum\" alias=\"week20\" />\n    <attribute name=\"cr6b0_week21\" aggregate=\"sum\" alias=\"week21\" />\n    <attribute name=\"cr6b0_week22\" aggregate=\"sum\" alias=\"week22\" />\n    <attribute name=\"cr6b0_week23\" aggregate=\"sum\" alias=\"week23\" />\n    <attribute name=\"cr6b0_week24\" aggregate=\"sum\" alias=\"week24\" />\n    <attribute name=\"cr6b0_week25\" aggregate=\"sum\" alias=\"week25\" />\n    <attribute name=\"cr6b0_week26\" aggregate=\"sum\" alias=\"week26\" />\n    <attribute name=\"cr6b0_week27\" aggregate=\"sum\" alias=\"week27\" />\n    <attribute name=\"cr6b0_week28\" aggregate=\"sum\" alias=\"week28\" />\n    <attribute name=\"cr6b0_week29\" aggregate=\"sum\" alias=\"week29\" />\n    <attribute name=\"cr6b0_week30\" aggregate=\"sum\" alias=\"week30\" />\n    <attribute name=\"cr6b0_week31\" aggregate=\"sum\" alias=\"week31\" />\n    <attribute name=\"cr6b0_week32\" aggregate=\"sum\" alias=\"week32\" />\n    <attribute name=\"cr6b0_week33\" aggregate=\"sum\" alias=\"week33\" />\n    <attribute name=\"cr6b0_week34\" aggregate=\"sum\" alias=\"week34\" />\n    <attribute name=\"cr6b0_week35\" aggregate=\"sum\" alias=\"week35\" />\n    <attribute name=\"cr6b0_week36\" aggregate=\"sum\" alias=\"week36\" />\n    <attribute name=\"cr6b0_week37\" aggregate=\"sum\" alias=\"week37\" />\n    <attribute name=\"cr6b0_week38\" aggregate=\"sum\" alias=\"week38\" />\n    <attribute name=\"cr6b0_week39\" aggregate=\"sum\" alias=\"week39\" />\n    <attribute name=\"cr6b0_week40\" aggregate=\"sum\" alias=\"week40\" />\n    <attribute name=\"cr6b0_week41\" aggregate=\"sum\" alias=\"week41\" />\n    <attribute name=\"cr6b0_week42\" aggregate=\"sum\" alias=\"week42\" />\n    <attribute name=\"cr6b0_week43\" aggregate=\"sum\" alias=\"week43\" />\n    <attribute name=\"cr6b0_week44\" aggregate=\"sum\" alias=\"week44\" />\n    <attribute name=\"cr6b0_week45\" aggregate=\"sum\" alias=\"week45\" />\n    <attribute name=\"cr6b0_week46\" aggregate=\"sum\" alias=\"week46\" />\n    <attribute name=\"cr6b0_week47\" aggregate=\"sum\" alias=\"week47\" />\n    <attribute name=\"cr6b0_week48\" aggregate=\"sum\" alias=\"week48\" />\n    <attribute name=\"cr6b0_week49\" aggregate=\"sum\" alias=\"week49\" />\n    <attribute name=\"cr6b0_week50\" aggregate=\"sum\" alias=\"week50\" />\n    <attribute name=\"cr6b0_week51\" aggregate=\"sum\" alias=\"week51\" />\n    <attribute name=\"cr6b0_week52\" aggregate=\"sum\" alias=\"week52\" />\n    <attribute name=\"cr6b0_week53\" aggregate=\"sum\" alias=\"week53\" />\n\n    <!-- Min and Max Dates -->\n    <attribute name=\"cr6b0_startdate\" aggregate=\"min\" alias=\"min_startdate\" />\n    <attribute name=\"cr6b0_enddate\" aggregate=\"max\" alias=\"max_enddate\" />\n\n  </entity>\n</fetch>\n"
+                            },
+                            "authentication": "@parameters('$authentication')"
+                          }
+                        },
+                        "List_rows_-_Project_Resourcing_5": {
+                          "runAfter": {
+                            "Set_variable_-_Child_Project": [
+                              "Succeeded"
+                            ]
+                          },
+                          "metadata": {
+                            "operationMetadataId": "b7defc9b-a4fc-4372-91fe-bf91cd573204"
+                          },
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "host": {
+                              "connectionName": "shared_commondataserviceforapps",
+                              "operationId": "ListRecords",
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                            },
+                            "parameters": {
+                              "entityName": "cr6b0_projectresourcings",
+                              "$filter": "(_cr6b0_relatedproject_value eq '@{outputs('Get_a_row_by_ID_-_Projects')?['body/cr6b0_projectid']}'@{variables('Parent Project')}@{variables('Child Project')}) and cr6b0_usedforreporting ne 1 and _cr6b0_consultant_value eq '@{triggerOutputs()?['body/_cr6b0_consultant_value']}'",
+                              "$orderby": "cr6b0_fiscalyear desc",
+                              "$top": 1
+                            },
+                            "authentication": "@parameters('$authentication')"
+                          }
+                        },
+                        "Apply_to_each_8": {
+                          "foreach": "@outputs('List_rows_-_Project_Resourcing_5')?['body/value']",
+                          "actions": {
+                            "Set_variable_-_FY_2": {
+                              "runAfter": {},
+                              "metadata": {
+                                "operationMetadataId": "b81a9f30-7979-40cc-bf70-e83faa8c01bc"
+                              },
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "FY",
+                                "value": "@{items('Apply_to_each_8')?['cr6b0_fiscalyear']}"
+                              }
+                            }
+                          },
+                          "runAfter": {
+                            "List_rows_-_Project_Resourcing_5": [
+                              "Succeeded"
+                            ]
+                          },
+                          "metadata": {
+                            "operationMetadataId": "b352da0a-300b-4e9c-a156-8a04f6d7338b"
+                          },
+                          "type": "Foreach"
+                        },
+                        "Compose_-_FY_2": {
+                          "runAfter": {
+                            "Apply_to_each_8": [
+                              "Succeeded"
+                            ]
+                          },
+                          "metadata": {
+                            "operationMetadataId": "56becea0-de8a-40c4-9e73-02c2cc0a6817"
+                          },
+                          "type": "Compose",
+                          "inputs": "@variables('FY')"
+                        }
+                      },
+                      "runAfter": {},
+                      "metadata": {
+                        "operationMetadataId": "4c2f9f0b-1ca0-4906-b1b3-2504122180c3"
+                      },
+                      "type": "Foreach"
+                    }
+                  }
+                },
+                "expression": {
+                  "less": [
+                    "@length(outputs('List_rows_-_Projects')?['body/value'])",
+                    1
+                  ]
+                },
+                "metadata": {
+                  "operationMetadataId": "22098836-ef13-4ffc-acf3-690cdf030a15"
+                },
+                "type": "If"
+              }
+            }
+          },
+          "expression": {
+            "and": [
+              {
+                "equals": [
+                  "@outputs('Get_a_row_by_ID_-_Projects')?['body/_cr6b0_parentproject_value']",
+                  "@null"
+                ]
+              },
+              {
+                "less": [
+                  "@length(outputs('List_rows_-_Projects')?['body/value'])",
+                  1
+                ]
+              }
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "a4a2b4c3-3015-4ab4-80e3-1d60168f49d9"
+          },
+          "type": "If"
+        },
+        "List_rows_-_Projects": {
+          "runAfter": {
+            "Initialize_variable_-_Project_Resourcing_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "8826a471-82d4-4d5e-9c04-9e43eefe2e6a"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "ListRecords",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "entityName": "cr6b0_projects",
+              "$filter": "_cr6b0_parentproject_value eq '@{triggerOutputs()?['body/_cr6b0_relatedproject_value']}'"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Initialize_variable_-_Parent_Project": {
+          "runAfter": {
+            "Get_a_row_by_ID_-_Projects": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "2f3c8a7d-9656-4225-b67c-b72755b67dc4"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Parent Project",
+                "type": "string",
+                "value": "@{if(\r\n  not(empty(outputs('Get_a_row_by_ID_-_Projects')?['body/_cr6b0_parentproject_value'])),\r\n  concat(' or _cr6b0_relatedproject_value eq ''', outputs('Get_a_row_by_ID_-_Projects')?['body/_cr6b0_parentproject_value'], ''''),\r\n  ''\r\n)\r\n}"
+              }
+            ]
+          }
+        },
+        "Initialize_variable_-_Child_Project": {
+          "runAfter": {
+            "Initialize_variable_-_Parent_Project": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "7427729f-35c7-44b9-84f6-9130aea0fca7"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Child Project",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "Initialize_variable_-_FY": {
+          "runAfter": {
+            "Initialize_variable_-_Child_Project": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "4757b749-eb3b-4a92-96dc-9aaf33c4e3a6"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "FY",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "Initialize_variable_-_Project_Resourcing_ID": {
+          "runAfter": {
+            "Initialize_variable_-_FY": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "ba7ebe04-06a4-460b-89d6-6fa46df719f3"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Project Resourcing ID",
+                "type": "string",
+                "value": "@{guid()}"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "templateName": ""
+  },
+  "schemaVersion": "1.0.0.0"
+}

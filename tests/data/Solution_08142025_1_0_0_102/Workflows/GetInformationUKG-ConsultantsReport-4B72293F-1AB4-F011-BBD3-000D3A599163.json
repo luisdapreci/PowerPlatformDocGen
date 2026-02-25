@@ -1,0 +1,106 @@
+{
+  "properties": {
+    "connectionReferences": {},
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "Recurrence": {
+          "recurrence": {
+            "frequency": "Week",
+            "interval": 1,
+            "timeZone": "SA Pacific Standard Time",
+            "schedule": {
+              "weekDays": [
+                "Monday",
+                "Thursday"
+              ],
+              "hours": [
+                "8"
+              ],
+              "minutes": [
+                0
+              ]
+            }
+          },
+          "evaluatedRecurrence": {
+            "frequency": "Week",
+            "interval": 1,
+            "timeZone": "SA Pacific Standard Time",
+            "schedule": {
+              "weekDays": [
+                "Monday",
+                "Thursday"
+              ],
+              "hours": [
+                "8"
+              ],
+              "minutes": [
+                0
+              ]
+            }
+          },
+          "metadata": {
+            "operationMetadataId": "82c7035a-b660-4399-b323-45262c8f60c0"
+          },
+          "type": "Recurrence"
+        }
+      },
+      "actions": {
+        "Run_a_Child_Flow": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "15cb4940-7809-4d77-9f3a-7d0fa1e4ebb9"
+          },
+          "type": "Workflow",
+          "inputs": {
+            "host": {
+              "workflowReferenceName": "ff4367ba-703d-f011-b4cc-7c1e5281f9ed"
+            }
+          }
+        },
+        "HTTP_-_Get_Information_UKG": {
+          "runAfter": {
+            "Run_a_Child_Flow": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "9d3e344b-cc26-4110-a58b-9b6e75825c51"
+          },
+          "type": "Http",
+          "inputs": {
+            "method": "GET",
+            "uri": "https://secure.saashr.com/ta/rest/v1/report/saved/107562189",
+            "headers": {
+              "Accept": "application/xml",
+              "Authentication": "Bearer @{body('Run_a_Child_Flow')?['token']}",
+              "Content-Type": "application/json",
+              "Content-length": "365"
+            }
+          }
+        },
+        "Compose": {
+          "runAfter": {
+            "HTTP_-_Get_Information_UKG": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "2777b680-31b8-4eee-b274-235f0e41126f"
+          },
+          "type": "Compose",
+          "inputs": "@body('HTTP_-_Get_Information_UKG')"
+        }
+      }
+    },
+    "templateName": ""
+  },
+  "schemaVersion": "1.0.0.0"
+}

@@ -1,0 +1,135 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr49f_sharedcommondataserviceforapps_cbd97"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "When_a_row_is_added,_modified_or_deleted": {
+          "metadata": {
+            "operationMetadataId": "551dae8e-84bb-420b-b8e1-87f61b5673e9"
+          },
+          "type": "OpenApiConnectionWebhook",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "SubscribeWebhookTrigger",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "subscriptionRequest/message": 3,
+              "subscriptionRequest/entityname": "cr6b0_project",
+              "subscriptionRequest/scope": 4,
+              "subscriptionRequest/filteringattributes": "cr6b0_parentproject"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      },
+      "actions": {
+        "Get_Parent_Project": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "52528190-ef01-4807-9cbb-bc03a6006213"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "GetItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "entityName": "cr6b0_projects",
+              "recordId": "@triggerOutputs()?['body/cr6b0_parentprojectguid']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Initialize_variable": {
+          "runAfter": {
+            "Get_Parent_Project": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "20f1dc5b-2cf8-436d-87da-a046e001fb1f"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "AgregatedTotalPrice",
+                "type": "float",
+                "value": "@outputs('Get_Parent_Project')?['body/cr6b0_proposedprice']"
+              }
+            ]
+          }
+        },
+        "Update_Parent_Project": {
+          "runAfter": {
+            "Increment_variable": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "fa86cad3-9b95-4c63-9af5-5cc56af9aad7"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "UpdateOnlyRecord",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "entityName": "cr6b0_projects",
+              "recordId": "@outputs('Get_Parent_Project')?['body/cr6b0_projectid']",
+              "item/cr6b0_newenddate1": "@triggerOutputs()?['body/cr6b0_projectenddate']",
+              "item/cr6b0_newstartdate1": "@triggerOutputs()?['body/cr6b0_projectstartdate']",
+              "item/cr6b0_proposedprice": "@variables('AgregatedTotalPrice')"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Increment_variable": {
+          "runAfter": {
+            "Initialize_variable": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "f8778354-76d1-49d9-95af-ca3e3c983161"
+          },
+          "type": "IncrementVariable",
+          "inputs": {
+            "name": "AgregatedTotalPrice",
+            "value": "@triggerOutputs()?['body/cr6b0_proposedprice']"
+          }
+        }
+      }
+    },
+    "templateName": ""
+  },
+  "schemaVersion": "1.0.0.0"
+}

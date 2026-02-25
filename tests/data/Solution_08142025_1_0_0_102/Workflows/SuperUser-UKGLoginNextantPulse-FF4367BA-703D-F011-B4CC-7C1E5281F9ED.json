@@ -1,0 +1,136 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_keyvault_1": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr49f_sharedkeyvault_a7ad7"
+        },
+        "api": {
+          "name": "shared_keyvault"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "manual": {
+          "metadata": {
+            "operationMetadataId": "f7a3b577-4fa4-4274-b5d4-0b5ad22eedd8"
+          },
+          "type": "Request",
+          "kind": "Button",
+          "inputs": {
+            "schema": {
+              "type": "object",
+              "properties": {},
+              "required": []
+            }
+          }
+        }
+      },
+      "actions": {
+        "Get_secret": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "bbb3b81f-0ecf-4005-a9ea-7190dd90559d"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_keyvault_1",
+              "operationId": "GetSecret",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_keyvault"
+            },
+            "parameters": {
+              "secretName": "TechnicalUserPassword"
+            },
+            "authentication": {
+              "type": "Raw",
+              "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+            }
+          }
+        },
+        "HTTP": {
+          "runAfter": {
+            "Get_secret": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "a0e87157-b820-4123-9b8c-b975abd8733d"
+          },
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "https://secure.saashr.com/ta/rest/v1/login",
+            "headers": {
+              "Api-Key": "7xi1tertkydw9m6tmq4plvtxay7cgu5m",
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "credentials": {
+                "username": "NXTTech",
+                "password": "@outputs('Get_secret')?['body/value']",
+                "company": "6186698"
+              }
+            }
+          }
+        },
+        "Compose": {
+          "runAfter": {
+            "HTTP": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "6c73ad96-3bd4-4a60-8179-b4c4ef46272b"
+          },
+          "type": "Compose",
+          "inputs": "@body('HTTP')"
+        },
+        "Respond_to_a_Power_App_or_flow": {
+          "runAfter": {
+            "Compose": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "fd90a15b-3f87-4452-97e9-fe20f340ae6a"
+          },
+          "type": "Response",
+          "kind": "PowerApp",
+          "inputs": {
+            "statusCode": 200,
+            "body": {
+              "token": "@{outputs('Compose')?['token']}"
+            },
+            "schema": {
+              "type": "object",
+              "properties": {
+                "token": {
+                  "title": "Token",
+                  "x-ms-dynamically-added": true,
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "templateName": ""
+  },
+  "schemaVersion": "1.0.0.0"
+}

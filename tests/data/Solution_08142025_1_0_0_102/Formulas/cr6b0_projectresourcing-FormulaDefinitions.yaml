@@ -1,0 +1,6 @@
+cr6b0_consultantnametext: =cr6b0_Consultant.cr6b0_consultantname
+cr6b0_consultantstatus: |-
+    =/*If((UTCToday() <= 'End Date' && UTCToday() >= 'Start Date') || (IsBlank('End Date') && IsBlank('Start Date') && QuotedType = 'QuotedType (Project Resourcings)'.'Non-Billable'),"Active","Inactive")*/
+    "Active"
+cr6b0_pricingguid: =Text(cr6b0_Pricing.cr41e_projectpricingid)
+cr6b0_totalcost: =cr6b0_allocationpercentage * cr6b0_RateLookup.cr6b0_rate

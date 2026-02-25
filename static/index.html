@@ -1,0 +1,1697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Power Platform Documentation Generator</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 1.1rem;
+        }
+
+        .wizard-container {
+            background: white;
+            border-radius: 10px;
+            padding: 40px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .step {
+            display: none;
+            animation: fadeIn 0.3s;
+        }
+
+        .step.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .step-indicator {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 40px;
+            padding: 0 20px;
+        }
+
+        .step-item {
+            flex: 1;
+            text-align: center;
+            position: relative;
+        }
+
+        .step-item:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            top: 20px;
+            right: -50%;
+            width: 100%;
+            height: 2px;
+            background: #e0e0e0;
+            z-index: -1;
+        }
+
+        .step-item.completed:not(:last-child)::after {
+            background: #667eea;
+        }
+
+        .step-number {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #e0e0e0;
+            color: #999;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        .step-item.active .step-number {
+            background: #667eea;
+            color: white;
+        }
+
+        .step-item.completed .step-number {
+            background: #28a745;
+            color: white;
+        }
+
+        .step-label {
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .step-item.active .step-label {
+            color: #667eea;
+            font-weight: bold;
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 10px;
+            padding: 60px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #f8f9ff;
+        }
+
+        .upload-area:hover {
+            background: #eef0ff;
+            border-color: #764ba2;
+        }
+
+        .upload-area.dragging {
+            background: #e0e5ff;
+            border-color: #764ba2;
+        }
+
+        .upload-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+
+        .upload-text {
+            color: #666;
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+        }
+
+        .upload-hint {
+            color: #999;
+            font-size: 0.9rem;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 5px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin: 10px 5px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-success {
+            background: #28a745;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            display: none;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            display: block;
+        }
+
+        .status.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+            display: block;
+        }
+
+        .components-list {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .component-section {
+            margin-bottom: 30px;
+        }
+
+        .component-section h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .component-item {
+            padding: 15px;
+            margin: 10px 0;
+            border: 2px solid #e0e0e0;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .component-item:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+
+        .component-item.selected {
+            border-color: #667eea;
+            background: #eef0ff;
+        }
+
+        .component-checkbox {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .component-info {
+            flex: 1;
+        }
+
+        .component-name {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .component-type {
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .selection-summary {
+            background: #f8f9ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            display: none;
+        }
+
+        .selection-summary.show {
+            display: block;
+        }
+
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+            display: none;
+        }
+
+        .loading-spinner.show {
+            display: block;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .progress-text {
+            text-align: center;
+            color: #666;
+            margin: 10px 0;
+            display: none;
+        }
+
+        .progress-text.show {
+            display: block;
+        }
+
+        .button-group {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 30px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .select-all-container {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9ff;
+            border-radius: 5px;
+        }
+
+        /* Chat Interface */
+        .chat-toggle {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            background: #667eea;
+            border-radius: 50%;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            z-index: 1000;
+            transition: all 0.3s;
+        }
+
+        .chat-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 16px rgba(102, 126, 234, 0.6);
+        }
+
+        .chat-toggle.show {
+            display: flex;
+        }
+
+        .chat-panel {
+            position: fixed;
+            bottom: 100px;
+            right: 30px;
+            width: 450px;
+            height: 600px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            display: none;
+            flex-direction: column;
+            z-index: 999;
+        }
+
+        .chat-panel.show {
+            display: flex;
+        }
+
+        .chat-header {
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px 15px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chat-header h3 {
+            margin: 0;
+            font-size: 1.1rem;
+        }
+
+        .chat-close {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2rem;
+            line-height: 1;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #f8f9fa;
+        }
+
+        .chat-message {
+            margin-bottom: 15px;
+            animation: slideIn 0.3s;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .chat-message.user {
+            text-align: right;
+        }
+
+        .chat-message.user .message-content {
+            background: #667eea;
+            color: white;
+            display: inline-block;
+            padding: 12px 16px;
+            border-radius: 15px 15px 0 15px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+
+        .chat-message.assistant .message-content {
+            background: white;
+            color: #333;
+            display: inline-block;
+            padding: 12px 16px;
+            border-radius: 15px 15px 15px 0;
+            max-width: 80%;
+            word-wrap: break-word;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* Markdown styling within assistant messages */
+        .chat-message.assistant .message-content code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #d63384;
+        }
+
+        .chat-message.assistant .message-content pre {
+            background: #f5f5f5;
+            padding: 12px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 8px 0;
+            border-left: 3px solid #667eea;
+        }
+
+        .chat-message.assistant .message-content pre code {
+            background: none;
+            padding: 0;
+            color: #333;
+        }
+
+        .chat-message.assistant .message-content ul,
+        .chat-message.assistant .message-content ol {
+            margin: 8px 0;
+            padding-left: 24px;
+        }
+
+        .chat-message.assistant .message-content li {
+            margin: 4px 0;
+        }
+
+        .chat-message.assistant .message-content p {
+            margin: 8px 0;
+        }
+
+        .chat-message.assistant .message-content p:first-child {
+            margin-top: 0;
+        }
+
+        .chat-message.assistant .message-content p:last-child {
+            margin-bottom: 0;
+        }
+
+        .chat-message.assistant .message-content h1,
+        .chat-message.assistant .message-content h2,
+        .chat-message.assistant .message-content h3 {
+            margin: 12px 0 8px 0;
+            font-weight: 600;
+        }
+
+        .chat-message.assistant .message-content h1 { font-size: 1.4em; }
+        .chat-message.assistant .message-content h2 { font-size: 1.2em; }
+        .chat-message.assistant .message-content h3 { font-size: 1.1em; }
+
+        .chat-message.assistant .message-content blockquote {
+            border-left: 3px solid #ddd;
+            padding-left: 12px;
+            margin: 8px 0;
+            color: #666;
+            font-style: italic;
+        }
+
+        .chat-message.assistant .message-content a {
+            color: #667eea;
+            text-decoration: none;
+        }
+
+        .chat-message.assistant .message-content a:hover {
+            text-decoration: underline;
+        }
+
+        .chat-message.assistant .message-content table {
+            border-collapse: collapse;
+            margin: 8px 0;
+            width: 100%;
+        }
+
+        .chat-message.assistant .message-content th,
+        .chat-message.assistant .message-content td {
+            border: 1px solid #ddd;
+            padding: 6px 12px;
+            text-align: left;
+        }
+
+        .chat-message.assistant .message-content th {
+            background: #f5f5f5;
+            font-weight: 600;
+        }
+
+        .chat-message.system .message-content {
+            background: #fff3e0;
+            color: #e65100;
+            display: inline-block;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-style: italic;
+        }
+
+        .typing-indicator {
+            display: none;
+            padding: 12px 16px;
+        }
+
+        .typing-indicator.show {
+            display: block;
+        }
+
+        .typing-dots {
+            display: inline-block;
+        }
+
+        .typing-dots span {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #999;
+            margin: 0 2px;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.7; }
+            30% { transform: translateY(-10px); opacity: 1; }
+        }
+
+        .chat-input-area {
+            padding: 20px;
+            border-top: 1px solid #e0e0e0;
+            background: white;
+            border-radius: 0 0 15px 15px;
+        }
+
+        .chat-input-container {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .chat-input:focus {
+            border-color: #667eea;
+        }
+
+        .chat-send-btn {
+            width: 45px;
+            height: 45px;
+            background: #667eea;
+            border: none;
+            border-radius: 50%;
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .chat-send-btn:hover:not(:disabled) {
+            background: #5568d3;
+            transform: scale(1.05);
+        }
+
+        .chat-send-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .chat-suggestions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .chat-suggestion {
+            padding: 8px 16px;
+            background: white;
+            border: 2px solid #667eea;
+            color: #667eea;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .chat-suggestion:hover {
+            background: #667eea;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 Power Platform Documentation Generator</h1>
+            <p class="subtitle">Create comprehensive documentation for your Power Platform solutions</p>
+        </header>
+
+        <div class="wizard-container">
+            <!-- Step Indicator -->
+            <div class="step-indicator">
+                <div class="step-item active" data-step="1">
+                    <div class="step-number">1</div>
+                    <div class="step-label">Upload</div>
+                </div>
+                <div class="step-item" data-step="2">
+                    <div class="step-number">2</div>
+                    <div class="step-label">Select Components</div>
+                </div>
+                <div class="step-item" data-step="3">
+                    <div class="step-number">3</div>
+                    <div class="step-label">Generate Docs</div>
+                </div>
+                <div class="step-item" data-step="4">
+                    <div class="step-number">4</div>
+                    <div class="step-label">Edit & Download</div>
+                </div>
+            </div>
+
+            <!-- Step 1: Upload -->
+            <div class="step active" data-step="1">
+                <h2>Step 1: Upload Solution ZIP</h2>
+                <p style="color: #666; margin: 20px 0;">Upload your Power Platform solution ZIP file to begin</p>
+                
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📦</div>
+                    <div class="upload-text">Drag & Drop your solution ZIP file here</div>
+                    <div class="upload-hint">or click to browse (Max 100MB)</div>
+                    <input type="file" id="fileInput" accept=".zip">
+                </div>
+
+                <div class="status" id="uploadStatus"></div>
+                <div class="loading-spinner" id="uploadSpinner"></div>
+                <div class="progress-text" id="uploadProgress"></div>
+            </div>
+
+            <!-- Step 2: Select Components -->
+            <div class="step" data-step="2">
+                <h2>Step 2: Select Components</h2>
+                <p style="color: #666; margin: 20px 0;">Choose which components to include in the documentation</p>
+                
+                <div class="select-all-container">
+                    <label>
+                        <input type="checkbox" id="selectAllCheckbox"> <strong>Select All Components</strong>
+                    </label>
+                </div>
+
+                <div class="components-list" id="componentsList">
+                    <div class="empty-state">Loading components...</div>
+                </div>
+
+                <div class="selection-summary" id="selectionSummary">
+                    <strong>Selected: <span id="selectedCount">0</span> component(s)</strong>
+                </div>
+
+                <div class="button-group">
+                    <button class="btn btn-secondary" onclick="goToStep(1)">← Back</button>
+                    <button class="btn" id="proceedBtn" onclick="selectComponents()" disabled>Proceed to Generate</button>
+                </div>
+            </div>
+
+            <!-- Step 3: Generate Documentation -->
+            <div class="step" data-step="3">
+                <h2>Step 3: Generate Documentation</h2>
+                <p style="color: #666; margin: 20px 0;">Review your selection and generate documentation</p>
+                
+                <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                    <h3 style="margin-top: 0; color: #333; font-size: 1.1rem;">📋 Selected Components</h3>
+                    <div id="selectedFilesSummary" style="margin-top: 15px;">
+                        <!-- Will be populated with selected components -->
+                    </div>
+                </div>
+                
+                <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                    <h3 style="margin-top: 0; color: #856404; font-size: 1.1rem;">💡 Business Context <span style="font-weight: normal; font-size: 0.85rem;">(Optional)</span></h3>
+                    <p style="color: #856404; font-size: 0.9rem; margin: 10px 0;">Provide business context to help the AI generate more relevant documentation beyond pure technical details:</p>
+                    <textarea id="businessContext" placeholder="Example: This flow handles customer onboarding requests. It should process orders within 24 hours and notify the sales team. Used by Customer Service department daily." style="width: 100%; min-height: 120px; padding: 12px; border: 1px solid #ddd; border-radius: 5px; font-family: inherit; font-size: 0.95rem; resize: vertical;"></textarea>
+                    <small style="color: #856404; display: block; margin-top: 8px;">💡 Tip: Include business rules, user roles, processes, expected outcomes, or departmental context</small>
+                </div>
+                
+                <div class="status" id="generateStatus"></div>
+                <div class="loading-spinner" id="generateSpinner"></div>
+                <div class="progress-text" id="generateProgress"></div>
+
+                <div style="text-align: center; margin: 40px 0;">
+                    <button class="btn btn-success" id="generateBtn" onclick="generateDocumentation()" style="font-size: 1.2rem; padding: 15px 50px;">
+                        📄 Generate Documentation
+                    </button>
+                </div>
+
+                <div class="button-group">
+                    <button class="btn btn-secondary" onclick="goToStep(2)">← Back</button>
+                    <div></div>
+                </div>
+            </div>
+
+            <!-- Step 4: Edit & Download -->
+            <div class="step" data-step="4">
+                <h2>Step 4: Download Documentation</h2>
+                <p style="color: #666; margin: 20px 0;">Your documentation has been generated successfully!</p>
+                
+                <div class="status success">
+                    ✓ Documentation generated successfully!
+                </div>
+
+                <div style="text-align: center; margin: 40px 0;">
+                    <button class="btn btn-success" onclick="downloadDocumentation()" style="font-size: 1.2rem; padding: 15px 40px; margin: 10px;">
+                        📄 Download Markdown
+                    </button>
+                    <button class="btn btn-primary" onclick="downloadPDF()" style="font-size: 1.2rem; padding: 15px 40px; margin: 10px; background-color: #dc3545; border-color: #dc3545;">
+                        📑 Download PDF
+                    </button>
+                </div>
+
+                <div class="button-group">
+                    <button class="btn btn-secondary" onclick="startOver()">Start Over</button>
+                    <div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Toggle Button -->
+        <div class="chat-toggle" id="chatToggle" onclick="toggleChat()">
+            💬
+        </div>
+
+        <!-- Chat Panel -->
+        <div class="chat-panel" id="chatPanel">
+            <div class="chat-header">
+                <h3>🤖 AI Assistant</h3>
+                <button class="chat-close" onclick="toggleChat()">✕</button>
+            </div>
+            <div class="chat-messages" id="chatMessages">
+                <div class="chat-message assistant">
+                    <div class="message-content">
+                        👋 Hi! I'm your AI assistant. Upload a solution and I can help you:
+                        <ul style="margin: 10px 0; padding-left: 20px;">
+                            <li>Analyze Power Fx formulas</li>
+                            <li>Explain data sources and connections</li>
+                            <li>Review Power Automate flows</li>
+                            <li>Answer questions about your solution</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="chat-suggestions" id="chatSuggestions"></div>
+                <div class="typing-indicator" id="typingIndicator">
+                    <div class="typing-dots">
+                        <span></span><span></span><span></span>
+                    </div>
+                </div>
+            </div>
+            <div class="chat-input-area">
+                <div class="chat-input-container">
+                    <input 
+                        type="text" 
+                        class="chat-input" 
+                        id="chatInput" 
+                        placeholder="Ask me anything about your solution..."
+                        onkeypress="handleChatKeyPress(event)"
+                    >
+                    <button class="chat-send-btn" id="chatSendBtn" onclick="sendChatMessage()">➤</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentStep = 1;
+        let sessionId = null;
+        let components = [];
+        let selectedComponents = [];
+        let generatedFiles = [];
+
+        // Step navigation
+        function goToStep(step) {
+            // Hide all steps
+            document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.step-item').forEach(s => {
+                s.classList.remove('active');
+                if (parseInt(s.dataset.step) < step) {
+                    s.classList.add('completed');
+                } else {
+                    s.classList.remove('completed');
+                }
+            });
+
+            // Show current step
+            document.querySelector(`.step[data-step="${step}"]`).classList.add('active');
+            document.querySelector(`.step-item[data-step="${step}"]`).classList.add('active');
+            
+            currentStep = step;
+        }
+
+        // Step 1: Upload
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const uploadStatus = document.getElementById('uploadStatus');
+        const uploadSpinner = document.getElementById('uploadSpinner');
+        const uploadProgress = document.getElementById('uploadProgress');
+
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragging');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragging');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragging');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileUpload(files[0]);
+            }
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileUpload(e.target.files[0]);
+            }
+        });
+
+        async function handleFileUpload(file) {
+            if (!file.name.endsWith('.zip')) {
+                showStatus(uploadStatus, 'error', 'Please upload a ZIP file');
+                return;
+            }
+
+            uploadSpinner.classList.add('show');
+            uploadProgress.classList.add('show');
+            uploadProgress.textContent = 'Uploading and extracting solution...';
+            uploadStatus.style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    sessionId = data.session_id;
+                    showStatus(uploadStatus, 'success', data.message);
+                    uploadSpinner.classList.remove('show');
+                    uploadProgress.classList.remove('show');
+                    
+                    setTimeout(() => {
+                        loadComponents();
+                        goToStep(2);
+                    }, 1000);
+                } else {
+                    showStatus(uploadStatus, 'error', data.detail || 'Upload failed');
+                    uploadSpinner.classList.remove('show');
+                    uploadProgress.classList.remove('show');
+                }
+            } catch (error) {
+                showStatus(uploadStatus, 'error', 'Upload failed: ' + error.message);
+                uploadSpinner.classList.remove('show');
+                uploadProgress.classList.remove('show');
+            }
+        }
+
+        // Step 2: Select Components
+        async function loadComponents() {
+            const componentsList = document.getElementById('componentsList');
+            componentsList.innerHTML = '<div class="empty-state">Loading components...</div>';
+
+            try {
+                const response = await fetch(`/components/${sessionId}`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    components = data.components;
+                    displayComponents();
+                } else {
+                    componentsList.innerHTML = '<div class="empty-state">Failed to load components</div>';
+                }
+            } catch (error) {
+                componentsList.innerHTML = '<div class="empty-state">Error loading components</div>';
+            }
+        }
+
+        function displayComponents() {
+            const componentsList = document.getElementById('componentsList');
+            
+            if (components.length === 0) {
+                componentsList.innerHTML = '<div class="empty-state">No components found in this solution</div>';
+                return;
+            }
+
+            const canvasApps = components.filter(c => c.type === 'canvas_app');
+            const flows = components.filter(c => c.type === 'power_automate');
+
+            let html = '';
+
+            if (canvasApps.length > 0) {
+                html += '<div class="component-section"><h3>📱 Canvas Apps</h3>';
+                canvasApps.forEach(comp => {
+                    html += `
+                        <div class="component-item" data-path="${comp.path}">
+                            <input type="checkbox" class="component-checkbox" data-path="${comp.path}">
+                            <div class="component-info">
+                                <div class="component-name">${comp.display_name}</div>
+                                <div class="component-type">${comp.name}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            }
+
+            if (flows.length > 0) {
+                html += '<div class="component-section"><h3>⚡ Power Automate Flows</h3>';
+                flows.forEach(comp => {
+                    html += `
+                        <div class="component-item" data-path="${comp.path}">
+                            <input type="checkbox" class="component-checkbox" data-path="${comp.path}">
+                            <div class="component-info">
+                                <div class="component-name">${comp.display_name}</div>
+                                <div class="component-type">${comp.name}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            }
+
+            componentsList.innerHTML = html;
+            
+            // Add click listeners to component items
+            document.querySelectorAll('.component-item').forEach(item => {
+                const path = item.dataset.path;
+                const checkbox = item.querySelector('.component-checkbox');
+                
+                // Click on the item (but not checkbox) toggles selection
+                item.addEventListener('click', (e) => {
+                    if (e.target.type !== 'checkbox') {
+                        checkbox.checked = !checkbox.checked;
+                        checkbox.dispatchEvent(new Event('change'));
+                    }
+                });
+                
+                // Click on checkbox directly
+                checkbox.addEventListener('change', (e) => {
+                    const isChecked = e.target.checked;
+                    
+                    if (isChecked) {
+                        item.classList.add('selected');
+                        if (!selectedComponents.includes(path)) {
+                            selectedComponents.push(path);
+                        }
+                    } else {
+                        item.classList.remove('selected');
+                        selectedComponents = selectedComponents.filter(p => p !== path);
+                    }
+                    
+                    console.log('Selected components:', selectedComponents);
+                    updateSelectionSummary();
+                });
+            });
+            
+            updateSelectionSummary();
+        }
+
+        function updateComponentSelection(path, isChecked) {
+            const item = document.querySelector(`.component-item[data-path="${path}"]`);
+            
+            if (isChecked) {
+                item.classList.add('selected');
+                if (!selectedComponents.includes(path)) {
+                    selectedComponents.push(path);
+                }
+            } else {
+                item.classList.remove('selected');
+                selectedComponents = selectedComponents.filter(p => p !== path);
+            }
+            
+            updateSelectionSummary();
+        }
+
+        document.getElementById('selectAllCheckbox').addEventListener('change', (e) => {
+            const checkboxes = document.querySelectorAll('.component-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = e.target.checked;
+                const item = cb.closest('.component-item');
+                if (e.target.checked) {
+                    item.classList.add('selected');
+                    if (!selectedComponents.includes(cb.dataset.path)) {
+                        selectedComponents.push(cb.dataset.path);
+                    }
+                } else {
+                    item.classList.remove('selected');
+                    selectedComponents = [];
+                }
+            });
+            updateSelectionSummary();
+        });
+
+        function updateSelectionSummary() {
+            const summary = document.getElementById('selectionSummary');
+            const count = document.getElementById('selectedCount');
+            const proceedBtn = document.getElementById('proceedBtn');
+            
+            count.textContent = selectedComponents.length;
+            
+            if (selectedComponents.length > 0) {
+                summary.classList.add('show');
+                proceedBtn.disabled = false;
+            } else {
+                summary.classList.remove('show');
+                proceedBtn.disabled = true;
+            }
+        }
+
+        async function selectComponents() {
+            if (selectedComponents.length === 0) {
+                alert('Please select at least one component');
+                return;
+            }
+
+            try {
+                const response = await fetch('/select-components', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        selected_components: selectedComponents
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Update the summary in step 3
+                    updateSelectedFilesSummary();
+                    goToStep(3);
+                    
+                    // Disable generate button during unpacking
+                    const generateBtn = document.getElementById('generateBtn');
+                    const generateStatus = document.getElementById('generateStatus');
+                    generateBtn.disabled = true;
+                    generateBtn.style.opacity = '0.6';
+                    generateBtn.style.cursor = 'not-allowed';
+                    showStatus(generateStatus, 'info', '⏳ Unpacking components... Please wait.');
+                    
+                    // Start polling for unpacking completion
+                    pollUnpackingStatus();
+                } else {
+                    alert('Failed to process selection: ' + (data.detail || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        function updateSelectedFilesSummary() {
+            const summaryDiv = document.getElementById('selectedFilesSummary');
+            
+            if (selectedComponents.length === 0) {
+                summaryDiv.innerHTML = '<p style="color: #999;">No components selected</p>';
+                return;
+            }
+
+            // Group components by type
+            const byType = {
+                '📱 Canvas Apps': [],
+                '⚡ Power Automate Flows': [],
+                '📦 Other': []
+            };
+
+            components.forEach(comp => {
+                if (selectedComponents.includes(comp.path)) {
+                    if (comp.type === 'canvas_app') {
+                        byType['📱 Canvas Apps'].push(comp.display_name || comp.name);
+                    } else if (comp.type === 'power_automate') {
+                        byType['⚡ Power Automate Flows'].push(comp.display_name || comp.name);
+                    } else {
+                        byType['📦 Other'].push(comp.display_name || comp.name);
+                    }
+                }
+            });
+
+            let html = `<div style="color: #28a745; margin-bottom: 15px;"><strong>✓ ${selectedComponents.length} component(s) selected</strong></div>`;
+            
+            for (const [type, items] of Object.entries(byType)) {
+                if (items.length > 0) {
+                    html += `<div style="margin-bottom: 15px;">`;
+                    html += `<strong style="color: #555;">${type}:</strong>`;
+                    html += `<ul style="margin: 5px 0 0 20px; color: #666;">`;
+                    items.forEach(name => {
+                        html += `<li style="margin: 3px 0;">${name}</li>`;
+                    });
+                    html += `</ul></div>`;
+                }
+            }
+
+            summaryDiv.innerHTML = html;
+        }
+
+        // Poll for unpacking completion and show chat when ready
+        async function pollUnpackingStatus() {
+            const checkStatus = async () => {
+                try {
+                    const response = await fetch(`/status/${sessionId}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        
+                        // Check if Copilot session is ready (unpacking complete)
+                        // The backend creates the Copilot session after unpacking
+                        if (data.status === 'analyzing' || data.status === 'completed') {
+                            // Unpacking is complete, enable chat
+                            document.getElementById('chatToggle').classList.add('show');
+                            
+                            // Enable generate documentation button
+                            const generateBtn = document.getElementById('generateBtn');
+                            const generateStatus = document.getElementById('generateStatus');
+                            generateBtn.disabled = false;
+                            generateBtn.style.opacity = '1';
+                            generateBtn.style.cursor = 'pointer';
+                            
+                            // Show notification
+                            showStatus(generateStatus, 'success', '✅ Components unpacked! Ready to generate documentation.');
+                            setTimeout(() => {
+                                generateStatus.innerHTML = '';
+                                generateStatus.style.display = 'none';
+                            }, 3000);
+                            
+                            return true; // Stop polling
+                        }
+                    }
+                    return false; // Continue polling
+                } catch (error) {
+                    console.error('Error checking unpacking status:', error);
+                    return false;
+                }
+            };
+            
+            // Poll every 2 seconds, max 30 seconds
+            let attempts = 0;
+            const maxAttempts = 15;
+            
+            const poll = async () => {
+                const done = await checkStatus();
+                attempts++;
+                
+                if (!done && attempts < maxAttempts) {
+                    setTimeout(poll, 2000);
+                } else if (attempts >= maxAttempts) {
+                    // Timeout - show chat anyway but with warning
+                    document.getElementById('chatToggle').classList.add('show');
+                    
+                    // Enable button even if polling times out
+                    const generateBtn = document.getElementById('generateBtn');
+                    const generateStatus = document.getElementById('generateStatus');
+                    generateBtn.disabled = false;
+                    generateBtn.style.opacity = '1';
+                    generateBtn.style.cursor = 'pointer';
+                    showStatus(generateStatus, 'warning', '⚠️ Unpacking status unknown. You can proceed with caution.');
+                    
+                    console.warn('Unpacking status polling timed out, enabling chat anyway');
+                }
+            };
+            
+            // Start polling after 1 second delay
+            setTimeout(poll, 1000);
+        }
+
+        // Poll for documentation generation progress
+        let docProgressInterval = null;
+        let isGenerating = false;
+        
+        async function pollDocumentationProgress() {
+            try {
+                const response = await fetch(`/doc-progress/${sessionId}`);
+                if (response.ok) {
+                    const progress = await response.json();
+                    const generateProgress = document.getElementById('generateProgress');
+                    
+                    if (progress.status !== 'not_started') {
+                        // Build progress message
+                        let message = progress.message || 'Processing...';
+                        
+                        // Add progress indicator if available
+                        if (progress.current && progress.total) {
+                            message = `[${progress.current}/${progress.total}] ${message}`;
+                        }
+                        
+                        // Add percentage if available
+                        if (progress.percentage !== undefined) {
+                            message = `${message} (${progress.percentage}%)`;
+                        }
+                        
+                        generateProgress.textContent = message;
+                    }
+                    
+                    // Stop polling if complete or error
+                    if (progress.stage === 'complete' || progress.stage === 'error') {
+                        if (docProgressInterval) {
+                            clearInterval(docProgressInterval);
+                            docProgressInterval = null;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error polling doc progress:', error);
+            }
+        }
+
+        // Step 3: Generate Documentation
+        async function generateDocumentation() {
+            const generateBtn = document.getElementById('generateBtn');
+            const generateStatus = document.getElementById('generateStatus');
+            const generateSpinner = document.getElementById('generateSpinner');
+            const generateProgress = document.getElementById('generateProgress');
+            const businessContext = document.getElementById('businessContext').value.trim();
+
+            // Prevent execution if button is disabled (unpacking in progress or already generating)
+            if (generateBtn.disabled || isGenerating) {
+                if (isGenerating) {
+                    showStatus(generateStatus, 'warning', '⚠️ Documentation generation is already in progress.');
+                } else {
+                    showStatus(generateStatus, 'warning', '⚠️ Please wait for unpacking to complete.');
+                }
+                return;
+            }
+
+            // Mark as generating and disable button with visual feedback
+            isGenerating = true;
+            generateBtn.disabled = true;
+            generateBtn.style.opacity = '0.6';
+            generateBtn.style.cursor = 'not-allowed';
+            generateSpinner.classList.add('show');
+            generateProgress.classList.add('show');
+            generateProgress.textContent = 'Starting documentation generation... This may take up to 15 minutes.';
+            generateStatus.style.display = 'none';
+            
+            // Start polling for progress updates
+            docProgressInterval = setInterval(pollDocumentationProgress, 2000);
+
+            try {
+                const requestBody = {};
+                if (businessContext) {
+                    requestBody.business_context = businessContext;
+                }
+
+                const response = await fetch(`/generate-docs/${sessionId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                const data = await response.json();
+                
+                // Stop polling
+                if (docProgressInterval) {
+                    clearInterval(docProgressInterval);
+                    docProgressInterval = null;
+                }
+
+                generateSpinner.classList.remove('show');
+                generateProgress.classList.remove('show');
+
+                if (response.ok) {
+                    generatedFiles = data.markdown_files;
+                    isGenerating = false;
+                    showStatus(generateStatus, 'success', 'Documentation generated successfully!');
+                    
+                    setTimeout(() => {
+                        goToStep(4);
+                    }, 1500);
+                } else {
+                    isGenerating = false;
+                    showStatus(generateStatus, 'error', data.detail || 'Generation failed');
+                    generateBtn.disabled = false;
+                    generateBtn.style.opacity = '1';
+                    generateBtn.style.cursor = 'pointer';
+                }
+            } catch (error) {
+                // Stop polling
+                if (docProgressInterval) {
+                    clearInterval(docProgressInterval);
+                    docProgressInterval = null;
+                }
+                
+                isGenerating = false;
+                generateSpinner.classList.remove('show');
+                generateProgress.classList.remove('show');
+                showStatus(generateStatus, 'error', 'Error: ' + error.message);
+                generateBtn.disabled = false;
+                generateBtn.style.opacity = '1';
+                generateBtn.style.cursor = 'pointer';
+            }
+        }
+
+        // Step 4: Download
+        function downloadDocumentation() {
+            if (generatedFiles.length > 0) {
+                const filename = generatedFiles[0]; // Already just the filename
+                window.open(`/download/${sessionId}/${filename}`, '_blank');
+            } else {
+                alert('No documentation files available to download');
+            }
+        }
+
+        function downloadPDF() {
+            if (generatedFiles.length > 0) {
+                const filename = generatedFiles[0]; // Already just the filename
+                
+                // Show loading indicator
+                const originalButton = event.target;
+                const originalText = originalButton.innerHTML;
+                originalButton.innerHTML = '⏳ Generating PDF...';
+                originalButton.disabled = true;
+                
+                // Open PDF download (will be generated on-demand)
+                const pdfWindow = window.open(`/download-pdf/${sessionId}/${filename}`, '_blank');
+                
+                // Reset button after a delay
+                setTimeout(() => {
+                    originalButton.innerHTML = originalText;
+                    originalButton.disabled = false;
+                }, 3000);
+                
+                // Handle case where popup was blocked
+                if (!pdfWindow) {
+                    alert('Please allow popups for this site to download the PDF');
+                    originalButton.innerHTML = originalText;
+                    originalButton.disabled = false;
+                }
+            } else {
+                alert('No documentation files available to download');
+            }
+        }
+
+        function startOver() {
+            if (confirm('Start over? This will clear the current session.')) {
+                sessionId = null;
+                components = [];
+                selectedComponents = [];
+                generatedFiles = [];
+                document.getElementById('fileInput').value = '';
+                goToStep(1);
+            }
+        }
+
+        // Utility functions
+        function showStatus(element, type, message) {
+            element.className = 'status ' + type;
+            element.textContent = message;
+            element.style.display = 'block';
+        }
+
+        // ==================== CHAT FUNCTIONALITY ====================
+        
+        let ws = null;
+        let currentStreamingMessage = null;
+
+        function toggleChat() {
+            const chatPanel = document.getElementById('chatPanel');
+            const chatToggle = document.getElementById('chatToggle');
+            
+            if (chatPanel.classList.contains('show')) {
+                chatPanel.classList.remove('show');
+            } else {
+                chatPanel.classList.add('show');
+                connectWebSocket();
+            }
+        }
+
+        function connectWebSocket() {
+            if (!sessionId) {
+                addChatMessage('system', 'Please upload a solution first');
+                return;
+            }
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                return; // Already connected
+            }
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/chat/${sessionId}`;
+            
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                showChatSuggestions();
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleChatMessage(data);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                addChatMessage('system', 'Connection error. Please try again.');
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket closed');
+            };
+        }
+
+        function handleChatMessage(data) {
+            const typingIndicator = document.getElementById('typingIndicator');
+            
+            switch(data.type) {
+                case 'delta':
+                    // Streaming chunk - append to current message
+                    if (data.content) {  // Only process if there's content
+                        if (!currentStreamingMessage) {
+                            currentStreamingMessage = createChatMessage('assistant', '');
+                            currentStreamingMessage._rawContent = '';  // Track raw markdown
+                        }
+                        // Append to raw content
+                        currentStreamingMessage._rawContent += data.content;
+                        // Re-render markdown
+                        currentStreamingMessage.innerHTML = marked.parse(currentStreamingMessage._rawContent);
+                        scrollChatToBottom();
+                    }
+                    break;
+                
+                case 'message':
+                    // Complete message
+                    if (currentStreamingMessage) {
+                        // Streaming already created the message, just finalize it
+                        currentStreamingMessage = null;
+                    } else if (data.content && data.content.trim()) {
+                        // Only create message if there's actual content
+                        addChatMessage('assistant', data.content);
+                    }
+                    typingIndicator.classList.remove('show');
+                    enableChatInput();
+                    break;
+                
+                case 'tool_call':
+                    // Tool calls are silent - not shown in chat
+                    break;
+                
+                case 'tool_result':
+                    // Tool results are silent - not shown in chat
+                    break;
+                
+                case 'typing':
+                    if (data.isTyping) {
+                        typingIndicator.classList.add('show');
+                    } else {
+                        typingIndicator.classList.remove('show');
+                    }
+                    break;
+                
+                case 'idle':
+                    // Reset streaming state and clean up empty messages
+                    if (currentStreamingMessage) {
+                        const rawContent = currentStreamingMessage._rawContent || currentStreamingMessage.textContent || '';
+                        if (rawContent.trim() === '') {
+                            // Remove empty message bubble
+                            const messageDiv = currentStreamingMessage.parentElement;
+                            if (messageDiv) {
+                                messageDiv.remove();
+                            }
+                        }
+                    }
+                    currentStreamingMessage = null;
+                    typingIndicator.classList.remove('show');
+                    enableChatInput();
+                    break;
+                
+                case 'system':
+                    addChatMessage('system', data.message);
+                    break;
+                
+                case 'error':
+                    addChatMessage('system', '❌ Error: ' + data.error);
+                    typingIndicator.classList.remove('show');
+                    enableChatInput();
+                    break;
+                
+                default:
+                    console.log('Unknown message type:', data.type);
+            }
+        }
+
+        function createChatMessage(type, content) {
+            const chatMessages = document.getElementById('chatMessages');
+            const typingIndicator = document.getElementById('typingIndicator');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message ${type}`;
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            
+            // Render markdown for assistant messages, plain text for others
+            if (type === 'assistant' && content) {
+                contentDiv.innerHTML = marked.parse(content);
+            } else {
+                contentDiv.textContent = content;
+            }
+            
+            messageDiv.appendChild(contentDiv);
+            // Insert before typing indicator to keep it at the bottom
+            chatMessages.insertBefore(messageDiv, typingIndicator);
+            scrollChatToBottom();
+            
+            return contentDiv;
+        }
+
+        function addChatMessage(type, content) {
+            createChatMessage(type, content);
+        }
+
+        function sendChatMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                connectWebSocket();
+                setTimeout(() => sendChatMessage(), 500);
+                return;
+            }
+            
+            // Add user message to chat
+            addChatMessage('user', message);
+            
+            // Send to server
+            ws.send(JSON.stringify({ message: message }));
+            
+            // Clear input and disable
+            input.value = '';
+            disableChatInput();
+            
+            // Show typing indicator
+            document.getElementById('typingIndicator').classList.add('show');
+        }
+
+        function handleChatKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendChatMessage();
+            }
+        }
+
+        function enableChatInput() {
+            const input = document.getElementById('chatInput');
+            const button = document.getElementById('chatSendBtn');
+            input.disabled = false;
+            button.disabled = false;
+        }
+
+        function disableChatInput() {
+            const input = document.getElementById('chatInput');
+            const button = document.getElementById('chatSendBtn');
+            input.disabled = true;
+            button.disabled = true;
+        }
+
+        function scrollChatToBottom() {
+            const chatMessages = document.getElementById('chatMessages');
+            const typingIndicator = document.getElementById('typingIndicator');
+            // Ensure typing indicator is always last
+            if (typingIndicator && typingIndicator.parentElement === chatMessages) {
+                chatMessages.appendChild(typingIndicator);
+            }
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function showChatSuggestions() {
+            const suggestions = document.getElementById('chatSuggestions');
+            const prompts = [
+                "What Power Fx formulas are in this solution?",
+                "List all data sources used",
+                "Explain the Power Automate flows",
+                "What connections are required?"
+            ];
+            
+            suggestions.innerHTML = '';
+            prompts.forEach(prompt => {
+                const btn = document.createElement('div');
+                btn.className = 'chat-suggestion';
+                btn.textContent = prompt;
+                btn.onclick = () => {
+                    document.getElementById('chatInput').value = prompt;
+                    sendChatMessage();
+                    suggestions.innerHTML = '';
+                };
+                suggestions.appendChild(btn);
+            });
+        }
+    </script>
+</body>
+</html>

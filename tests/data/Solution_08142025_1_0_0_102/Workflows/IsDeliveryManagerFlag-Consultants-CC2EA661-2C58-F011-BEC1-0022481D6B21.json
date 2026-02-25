@@ -1,0 +1,160 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "impersonation": {},
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr6b0_sharedcommondataserviceforapps_17284"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "When_a_row_is_added_or_deleted_-_Delivery_Managers": {
+          "metadata": {
+            "operationMetadataId": "9a939d5d-d0ae-41d2-b818-4cd759369eb3"
+          },
+          "type": "OpenApiConnectionWebhook",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "SubscribeWebhookTrigger"
+            },
+            "parameters": {
+              "subscriptionRequest/message": 5,
+              "subscriptionRequest/entityname": "cr6b0_deliverymanager",
+              "subscriptionRequest/scope": 4
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      },
+      "actions": {
+        "Compose_-_Create_or_Delete": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "5bb904ef-670f-43cb-a229-d8555f68791f"
+          },
+          "type": "Compose",
+          "inputs": "@triggerOutputs()?['body/SdkMessage']"
+        },
+        "List_rows_-_Consultants": {
+          "runAfter": {
+            "Compose_-_Create_or_Delete": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "837499b0-71d9-43b0-bd15-afae047ab000"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "ListRecords"
+            },
+            "parameters": {
+              "entityName": "cr6b0_consultants",
+              "$filter": "cr6b0_email eq '@{triggerOutputs()?['body/cr6b0_deliverymanageremail']}'",
+              "$top": 1
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Apply_to_each": {
+          "foreach": "@outputs('List_rows_-_Consultants')?['body/value']",
+          "actions": {
+            "Condition": {
+              "actions": {
+                "Update_a_row_-_Consultants_-_Active": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "8b346a35-ffe1-4975-8430-d0e3e1639f3e"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "UpdateOnlyRecord"
+                    },
+                    "parameters": {
+                      "entityName": "cr6b0_consultants",
+                      "recordId": "@items('Apply_to_each')?['cr6b0_consultantid']",
+                      "item/cr6b0_isdeliverymanager": true
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              },
+              "runAfter": {},
+              "else": {
+                "actions": {
+                  "Update_a_row_-_Consultants_-_Inactive": {
+                    "runAfter": {},
+                    "metadata": {
+                      "operationMetadataId": "87b12f9d-9ae6-4265-9398-21d4545a0075"
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                        "connectionName": "shared_commondataserviceforapps",
+                        "operationId": "UpdateOnlyRecord"
+                      },
+                      "parameters": {
+                        "entityName": "cr6b0_consultants",
+                        "recordId": "@items('Apply_to_each')?['cr6b0_consultantid']",
+                        "item/cr6b0_isdeliverymanager": false
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    }
+                  }
+                }
+              },
+              "expression": {
+                "equals": [
+                  "@outputs('Compose_-_Create_or_Delete')",
+                  "Create"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "d486e6db-545f-498e-91e8-ec1af615b1de"
+              },
+              "type": "If"
+            }
+          },
+          "runAfter": {
+            "List_rows_-_Consultants": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "69a98475-1652-460a-98f8-35dc75fb3707"
+          },
+          "type": "Foreach"
+        }
+      }
+    },
+    "templateName": null
+  },
+  "schemaVersion": "1.0.0.0"
+}

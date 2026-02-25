@@ -1,0 +1,1069 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr49f_sharedcommondataserviceforapps_cbd97"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "When_a_Project_is_added": {
+          "metadata": {
+            "operationMetadataId": "98460acd-4b89-4027-99a8-95be0905f21d"
+          },
+          "type": "OpenApiConnectionWebhook",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "SubscribeWebhookTrigger",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "subscriptionRequest/message": 1,
+              "subscriptionRequest/entityname": "cr6b0_project",
+              "subscriptionRequest/scope": 4
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      },
+      "actions": {
+        "Get_Project_Odata_Id": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "1b7ba43b-e23f-483d-ac8f-a0fdf67a458b"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "GetItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+            },
+            "parameters": {
+              "entityName": "cr6b0_projects",
+              "recordId": "@triggerOutputs()?['body/cr6b0_projectid']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Check_for_BI_and_Analytics_SA": {
+          "actions": {
+            "List_SA_Tasks": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "53f5c007-1faf-4bb8-8183-1ca0edf2165d"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr41e_sataskses",
+                  "$filter": "cr6b0_saname eq 'BI and Analytics'"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Apply_to_each": {
+              "foreach": "@outputs('List_SA_Tasks')?['body/value']",
+              "actions": {
+                "Get_a_row_by_ID_Phase": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "df7aef15-cdcf-4a82-8136-8e001303bff0"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "GetItem",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                    },
+                    "parameters": {
+                      "entityName": "cr6b0_projectphases",
+                      "recordId": "@items('Apply_to_each')?['cr6b0_phaseid']"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Get_a_row_by_ID_Subphase": {
+                  "runAfter": {
+                    "Get_a_row_by_ID_Phase": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "4653a4b5-6eaf-43b3-8499-7cd1b8fcee78"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "GetItem",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                    },
+                    "parameters": {
+                      "entityName": "cr6b0_projectsubphases",
+                      "recordId": "@items('Apply_to_each')?['cr6b0_subphaseid']"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Apply_to_each_7": {
+                  "foreach": "@outputs('List_SAS_(For_Odata_Id)_')?['body/value']",
+                  "actions": {
+                    "Add_a_new_row": {
+                      "runAfter": {},
+                      "metadata": {
+                        "operationMetadataId": "772df135-9d60-432c-ba7a-0ca0ef274cdb"
+                      },
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connectionName": "shared_commondataserviceforapps",
+                          "operationId": "CreateRecord",
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                        },
+                        "parameters": {
+                          "entityName": "cr41e_effortcalculations",
+                          "item/cr6b0_Phase@odata.bind": "@outputs('Get_a_row_by_ID_Phase')?['body/@odata.id']",
+                          "item/cr41e_Project@odata.bind": "@outputs('Get_Project_Odata_Id')?['body/@odata.id']",
+                          "item/cr6b0_SA@odata.bind": "@items('Apply_to_each_7')?['@odata.id']",
+                          "item/cr6b0_Subphase@odata.bind": "@outputs('Get_a_row_by_ID_Subphase')?['body/@odata.id']",
+                          "item/cr6b0_Task@odata.bind": "@items('Apply_to_each')?['@odata.id']"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    }
+                  },
+                  "runAfter": {
+                    "Get_a_row_by_ID_Subphase": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "73999dc5-fce4-42cc-a8bf-12d502b1c864"
+                  },
+                  "type": "Foreach"
+                }
+              },
+              "runAfter": {
+                "List_SAS_(For_Odata_Id)_": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "1f27e448-c275-4cda-a21b-14e3b0d02307"
+              },
+              "type": "Foreach"
+            },
+            "List_SAS_(For_Odata_Id)_": {
+              "runAfter": {
+                "List_SA_Tasks": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "78244cf6-6268-4d67-9b57-51c0dcbe3261"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_specializationareas",
+                  "$filter": "cr6b0_specializationareaname eq 'BI and Analytics'"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "runAfter": {
+            "Get_Project_Odata_Id": [
+              "Succeeded"
+            ]
+          },
+          "expression": {
+            "and": [
+              {
+                "not": {
+                  "equals": [
+                    "@triggerOutputs()?['body/cr6b0_opportunityabi']",
+                    "@null"
+                  ]
+                }
+              },
+              {
+                "greater": [
+                  "@triggerOutputs()?['body/cr6b0_opportunityabi']",
+                  0
+                ]
+              }
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "8f361fb6-2867-402f-b0f6-126248e4dbd9"
+          },
+          "type": "If"
+        },
+        "Check_for_AI_SA": {
+          "actions": {
+            "List_SA_Tasks_2": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "53f5c007-1faf-4bb8-8183-1ca0edf2165d"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr41e_sataskses",
+                  "$filter": "cr6b0_saname eq 'Artificial Intelligence'"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Apply_to_each_2": {
+              "foreach": "@outputs('List_SA_Tasks_2')?['body/value']",
+              "actions": {
+                "Get_a_row_by_ID_Phase_2": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "df7aef15-cdcf-4a82-8136-8e001303bff0"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "GetItem",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                    },
+                    "parameters": {
+                      "entityName": "cr6b0_projectphases",
+                      "recordId": "@items('Apply_to_each_2')?['cr6b0_phaseid']"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Get_a_row_by_ID_Subphase_2": {
+                  "runAfter": {
+                    "Get_a_row_by_ID_Phase_2": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "4653a4b5-6eaf-43b3-8499-7cd1b8fcee78"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "GetItem",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                    },
+                    "parameters": {
+                      "entityName": "cr6b0_projectsubphases",
+                      "recordId": "@items('Apply_to_each_2')?['cr6b0_subphaseid']"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Apply_to_each_8": {
+                  "foreach": "@outputs('List_SAS_(For_Odata_Id)_2')?['body/value']",
+                  "actions": {
+                    "Add_a_new_row_2": {
+                      "runAfter": {},
+                      "metadata": {
+                        "operationMetadataId": "772df135-9d60-432c-ba7a-0ca0ef274cdb"
+                      },
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connectionName": "shared_commondataserviceforapps",
+                          "operationId": "CreateRecord",
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                        },
+                        "parameters": {
+                          "entityName": "cr41e_effortcalculations",
+                          "item/cr6b0_Phase@odata.bind": "@outputs('Get_a_row_by_ID_Phase_2')?['body/@odata.id']",
+                          "item/cr41e_Project@odata.bind": "@outputs('Get_Project_Odata_Id')?['body/@odata.id']",
+                          "item/cr6b0_SA@odata.bind": "@items('Apply_to_each_8')?['@odata.id']",
+                          "item/cr6b0_Subphase@odata.bind": "@outputs('Get_a_row_by_ID_Subphase_2')?['body/@odata.id']",
+                          "item/cr6b0_Task@odata.bind": "@items('Apply_to_each_2')?['@odata.id']"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    }
+                  },
+                  "runAfter": {
+                    "Get_a_row_by_ID_Subphase_2": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "38674cf8-efb5-4946-9f6a-4cd0e3565390"
+                  },
+                  "type": "Foreach"
+                }
+              },
+              "runAfter": {
+                "List_SAS_(For_Odata_Id)_2": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "1f27e448-c275-4cda-a21b-14e3b0d02307"
+              },
+              "type": "Foreach"
+            },
+            "List_SAS_(For_Odata_Id)_2": {
+              "runAfter": {
+                "List_SA_Tasks_2": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "15d18177-e4da-4d3b-8cac-a21a2bc3deec"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_specializationareas",
+                  "$filter": "cr6b0_specializationareaname eq 'Artificial Intelligence'"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "runAfter": {
+            "Check_for_BI_and_Analytics_SA": [
+              "Succeeded"
+            ]
+          },
+          "expression": {
+            "and": [
+              {
+                "not": {
+                  "equals": [
+                    "@triggerOutputs()?['body/cr6b0_opportunityai']",
+                    "@null"
+                  ]
+                }
+              },
+              {
+                "greater": [
+                  "@triggerOutputs()?['body/cr6b0_opportunityai']",
+                  0
+                ]
+              }
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "8f361fb6-2867-402f-b0f6-126248e4dbd9"
+          },
+          "type": "If"
+        },
+        "Check_for_BPM_SA": {
+          "actions": {
+            "List_SA_Tasks_3": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "53f5c007-1faf-4bb8-8183-1ca0edf2165d"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr41e_sataskses",
+                  "$filter": "cr6b0_saname eq 'Business Process Modernization'"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Apply_to_each_3": {
+              "foreach": "@outputs('List_SA_Tasks_3')?['body/value']",
+              "actions": {
+                "Get_a_row_by_ID_Phase_3": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "df7aef15-cdcf-4a82-8136-8e001303bff0"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "GetItem",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                    },
+                    "parameters": {
+                      "entityName": "cr6b0_projectphases",
+                      "recordId": "@items('Apply_to_each_3')?['cr6b0_phaseid']"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Get_a_row_by_ID_Subphase_3": {
+                  "runAfter": {
+                    "Get_a_row_by_ID_Phase_3": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "4653a4b5-6eaf-43b3-8499-7cd1b8fcee78"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "GetItem",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                    },
+                    "parameters": {
+                      "entityName": "cr6b0_projectsubphases",
+                      "recordId": "@items('Apply_to_each_3')?['cr6b0_subphaseid']"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Apply_to_each_9": {
+                  "foreach": "@outputs('List_SAS_(For_Odata_Id)_3')?['body/value']",
+                  "actions": {
+                    "Add_a_new_row_3": {
+                      "runAfter": {},
+                      "metadata": {
+                        "operationMetadataId": "772df135-9d60-432c-ba7a-0ca0ef274cdb"
+                      },
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connectionName": "shared_commondataserviceforapps",
+                          "operationId": "CreateRecord",
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                        },
+                        "parameters": {
+                          "entityName": "cr41e_effortcalculations",
+                          "item/cr6b0_Phase@odata.bind": "@outputs('Get_a_row_by_ID_Phase_3')?['body/@odata.id']",
+                          "item/cr41e_Project@odata.bind": "@outputs('Get_Project_Odata_Id')?['body/@odata.id']",
+                          "item/cr6b0_SA@odata.bind": "@items('Apply_to_each_9')?['@odata.id']",
+                          "item/cr6b0_Subphase@odata.bind": "@outputs('Get_a_row_by_ID_Subphase_3')?['body/@odata.id']",
+                          "item/cr6b0_Task@odata.bind": "@items('Apply_to_each_3')?['@odata.id']"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    }
+                  },
+                  "runAfter": {
+                    "Get_a_row_by_ID_Subphase_3": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "d9e4df66-e482-4ff5-9246-4f60b6f372ae"
+                  },
+                  "type": "Foreach"
+                }
+              },
+              "runAfter": {
+                "List_SAS_(For_Odata_Id)_3": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "1f27e448-c275-4cda-a21b-14e3b0d02307"
+              },
+              "type": "Foreach"
+            },
+            "List_SAS_(For_Odata_Id)_3": {
+              "runAfter": {
+                "List_SA_Tasks_3": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "d0e39d4d-ef7a-47d1-b1d5-52122bacfa39"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_specializationareas",
+                  "$filter": "cr6b0_specializationareaname eq  'Business Process Modernization'"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "runAfter": {
+            "Check_for_AI_SA": [
+              "Succeeded"
+            ]
+          },
+          "expression": {
+            "and": [
+              {
+                "not": {
+                  "equals": [
+                    "@triggerOutputs()?['body/cr6b0_opportunitybpm']",
+                    "@null"
+                  ]
+                }
+              },
+              {
+                "greater": [
+                  "@triggerOutputs()?['body/cr6b0_opportunitybpm']",
+                  0
+                ]
+              }
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "8f361fb6-2867-402f-b0f6-126248e4dbd9"
+          },
+          "type": "If"
+        },
+        "Check_for_Communications_SA": {
+          "actions": {
+            "List_SA_Tasks_4": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "53f5c007-1faf-4bb8-8183-1ca0edf2165d"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr41e_sataskses",
+                  "$filter": "cr6b0_saname eq 'Communications'"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Apply_to_each_4": {
+              "foreach": "@outputs('List_SA_Tasks_4')?['body/value']",
+              "actions": {
+                "Get_a_row_by_ID_Phase_4": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "df7aef15-cdcf-4a82-8136-8e001303bff0"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "GetItem",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                    },
+                    "parameters": {
+                      "entityName": "cr6b0_projectphases",
+                      "recordId": "@items('Apply_to_each_4')?['cr6b0_phaseid']"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Get_a_row_by_ID_Subphase_4": {
+                  "runAfter": {
+                    "Get_a_row_by_ID_Phase_4": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "4653a4b5-6eaf-43b3-8499-7cd1b8fcee78"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "GetItem",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                    },
+                    "parameters": {
+                      "entityName": "cr6b0_projectsubphases",
+                      "recordId": "@items('Apply_to_each_4')?['cr6b0_subphaseid']"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Apply_to_each_10": {
+                  "foreach": "@outputs('List_SAS_(For_Odata_Id)_4')?['body/value']",
+                  "actions": {
+                    "Add_a_new_row_4": {
+                      "runAfter": {},
+                      "metadata": {
+                        "operationMetadataId": "772df135-9d60-432c-ba7a-0ca0ef274cdb"
+                      },
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connectionName": "shared_commondataserviceforapps",
+                          "operationId": "CreateRecord",
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                        },
+                        "parameters": {
+                          "entityName": "cr41e_effortcalculations",
+                          "item/cr6b0_Phase@odata.bind": "@outputs('Get_a_row_by_ID_Phase_4')?['body/@odata.id']",
+                          "item/cr41e_Project@odata.bind": "@outputs('Get_Project_Odata_Id')?['body/@odata.id']",
+                          "item/cr6b0_SA@odata.bind": "@items('Apply_to_each_10')?['@odata.id']",
+                          "item/cr6b0_Subphase@odata.bind": "@outputs('Get_a_row_by_ID_Subphase_4')?['body/@odata.id']",
+                          "item/cr6b0_Task@odata.bind": "@items('Apply_to_each_4')?['@odata.id']"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    }
+                  },
+                  "runAfter": {
+                    "Get_a_row_by_ID_Subphase_4": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "69e1b5c3-dd30-48e3-bbbd-9d1b00b928f6"
+                  },
+                  "type": "Foreach"
+                }
+              },
+              "runAfter": {
+                "List_SAS_(For_Odata_Id)_4": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "1f27e448-c275-4cda-a21b-14e3b0d02307"
+              },
+              "type": "Foreach"
+            },
+            "List_SAS_(For_Odata_Id)_4": {
+              "runAfter": {
+                "List_SA_Tasks_4": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "17bd129b-96c5-46a6-8e09-71a5f95bff53"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_specializationareas",
+                  "$filter": "cr6b0_specializationareaname eq 'Communications'"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "runAfter": {
+            "Check_for_BPM_SA": [
+              "Succeeded"
+            ]
+          },
+          "expression": {
+            "and": [
+              {
+                "not": {
+                  "equals": [
+                    "@triggerOutputs()?['body/cr6b0_opportunitycm']",
+                    "@null"
+                  ]
+                }
+              },
+              {
+                "greater": [
+                  "@triggerOutputs()?['body/cr6b0_opportunitycm']",
+                  0
+                ]
+              }
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "8f361fb6-2867-402f-b0f6-126248e4dbd9"
+          },
+          "type": "If"
+        },
+        "Check_for_Project_Management_SA": {
+          "actions": {
+            "List_SA_Tasks_5": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "53f5c007-1faf-4bb8-8183-1ca0edf2165d"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr41e_sataskses",
+                  "$filter": "cr6b0_saname eq 'Project Management'"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Apply_to_each_5": {
+              "foreach": "@outputs('List_SA_Tasks_5')?['body/value']",
+              "actions": {
+                "Get_a_row_by_ID_Phase_5": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "df7aef15-cdcf-4a82-8136-8e001303bff0"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "GetItem",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                    },
+                    "parameters": {
+                      "entityName": "cr6b0_projectphases",
+                      "recordId": "@items('Apply_to_each_5')?['cr6b0_phaseid']"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Get_a_row_by_ID_Subphase_5": {
+                  "runAfter": {
+                    "Get_a_row_by_ID_Phase_5": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "4653a4b5-6eaf-43b3-8499-7cd1b8fcee78"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "GetItem",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                    },
+                    "parameters": {
+                      "entityName": "cr6b0_projectsubphases",
+                      "recordId": "@items('Apply_to_each_5')?['cr6b0_subphaseid']"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Apply_to_each_11": {
+                  "foreach": "@outputs('List_SAS_(For_Odata_Id)_5')?['body/value']",
+                  "actions": {
+                    "Add_a_new_row_5": {
+                      "runAfter": {},
+                      "metadata": {
+                        "operationMetadataId": "772df135-9d60-432c-ba7a-0ca0ef274cdb"
+                      },
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connectionName": "shared_commondataserviceforapps",
+                          "operationId": "CreateRecord",
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                        },
+                        "parameters": {
+                          "entityName": "cr41e_effortcalculations",
+                          "item/cr6b0_Phase@odata.bind": "@outputs('Get_a_row_by_ID_Phase_5')?['body/@odata.id']",
+                          "item/cr41e_Project@odata.bind": "@outputs('Get_Project_Odata_Id')?['body/@odata.id']",
+                          "item/cr6b0_SA@odata.bind": "@items('Apply_to_each_11')?['@odata.id']",
+                          "item/cr6b0_Subphase@odata.bind": "@outputs('Get_a_row_by_ID_Subphase_5')?['body/@odata.id']",
+                          "item/cr6b0_Task@odata.bind": "@items('Apply_to_each_5')?['@odata.id']"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    }
+                  },
+                  "runAfter": {
+                    "Get_a_row_by_ID_Subphase_5": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "a38af984-4b50-40de-ad12-1c418b5348c9"
+                  },
+                  "type": "Foreach"
+                }
+              },
+              "runAfter": {
+                "List_SAS_(For_Odata_Id)_5": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "1f27e448-c275-4cda-a21b-14e3b0d02307"
+              },
+              "type": "Foreach"
+            },
+            "List_SAS_(For_Odata_Id)_5": {
+              "runAfter": {
+                "List_SA_Tasks_5": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "629d3d90-e70d-44b6-8872-093e344699bf"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_specializationareas",
+                  "$filter": "cr6b0_specializationareaname eq 'Project Management'"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "runAfter": {
+            "Check_for_Communications_SA": [
+              "Succeeded"
+            ]
+          },
+          "expression": {
+            "and": [
+              {
+                "not": {
+                  "equals": [
+                    "@triggerOutputs()?['body/cr6b0_opportunitypm']",
+                    "@null"
+                  ]
+                }
+              },
+              {
+                "greater": [
+                  "@triggerOutputs()?['body/cr6b0_opportunitypm']",
+                  0
+                ]
+              }
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "8f361fb6-2867-402f-b0f6-126248e4dbd9"
+          },
+          "type": "If"
+        },
+        "Check_for_Business_Operations_SA": {
+          "actions": {
+            "List_SA_Tasks_6": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "53f5c007-1faf-4bb8-8183-1ca0edf2165d"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr41e_sataskses",
+                  "$filter": "cr6b0_saname eq 'Business Operations'"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Apply_to_each_6": {
+              "foreach": "@outputs('List_SA_Tasks_6')?['body/value']",
+              "actions": {
+                "Get_a_row_by_ID_Phase_6": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "df7aef15-cdcf-4a82-8136-8e001303bff0"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "GetItem",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                    },
+                    "parameters": {
+                      "entityName": "cr6b0_projectphases",
+                      "recordId": "@items('Apply_to_each_6')?['cr6b0_phaseid']"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Get_a_row_by_ID_Subphase_6": {
+                  "runAfter": {
+                    "Get_a_row_by_ID_Phase_6": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "4653a4b5-6eaf-43b3-8499-7cd1b8fcee78"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "GetItem",
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                    },
+                    "parameters": {
+                      "entityName": "cr6b0_projectsubphases",
+                      "recordId": "@items('Apply_to_each_6')?['cr6b0_subphaseid']"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Apply_to_each_12": {
+                  "foreach": "@outputs('List_SAS_(For_Odata_Id)_6')?['body/value']",
+                  "actions": {
+                    "Add_a_new_row_6": {
+                      "runAfter": {},
+                      "metadata": {
+                        "operationMetadataId": "772df135-9d60-432c-ba7a-0ca0ef274cdb"
+                      },
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connectionName": "shared_commondataserviceforapps",
+                          "operationId": "CreateRecord",
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                        },
+                        "parameters": {
+                          "entityName": "cr41e_effortcalculations",
+                          "item/cr6b0_Phase@odata.bind": "@outputs('Get_a_row_by_ID_Phase_6')?['body/@odata.id']",
+                          "item/cr41e_Project@odata.bind": "@outputs('Get_Project_Odata_Id')?['body/@odata.id']",
+                          "item/cr6b0_SA@odata.bind": "@items('Apply_to_each_12')?['@odata.id']",
+                          "item/cr6b0_Subphase@odata.bind": "@outputs('Get_a_row_by_ID_Subphase_6')?['body/@odata.id']",
+                          "item/cr6b0_Task@odata.bind": "@items('Apply_to_each_6')?['@odata.id']"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    }
+                  },
+                  "runAfter": {
+                    "Get_a_row_by_ID_Subphase_6": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "e7b5c9da-a43e-4ab8-8de1-f46beea5a405"
+                  },
+                  "type": "Foreach"
+                }
+              },
+              "runAfter": {
+                "List_SAS_(For_Odata_Id)_6": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "1f27e448-c275-4cda-a21b-14e3b0d02307"
+              },
+              "type": "Foreach"
+            },
+            "List_SAS_(For_Odata_Id)_6": {
+              "runAfter": {
+                "List_SA_Tasks_6": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "4e3c377e-4080-4572-8227-251e2fe5d7e3"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_specializationareas",
+                  "$filter": "cr6b0_specializationareaname eq 'Business Operations'"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "runAfter": {
+            "Check_for_Project_Management_SA": [
+              "Succeeded"
+            ]
+          },
+          "expression": {
+            "and": [
+              {
+                "not": {
+                  "equals": [
+                    "@triggerOutputs()?['body/cr6b0_opportunitypo']",
+                    "@null"
+                  ]
+                }
+              },
+              {
+                "greater": [
+                  "@triggerOutputs()?['body/cr6b0_opportunitypo']",
+                  0
+                ]
+              }
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "8f361fb6-2867-402f-b0f6-126248e4dbd9"
+          },
+          "type": "If"
+        }
+      }
+    },
+    "templateName": ""
+  },
+  "schemaVersion": "1.0.0.0"
+}

@@ -1,0 +1,826 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr6b0_sharedcommondataserviceforapps_17284"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      },
+      "shared_office365users": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "new_sharedoffice365users_bc680"
+        },
+        "api": {
+          "name": "shared_office365users"
+        }
+      },
+      "shared_office365_1": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "new_sharedoffice365_f3920"
+        },
+        "api": {
+          "name": "shared_office365"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "Recurrence": {
+          "recurrence": {
+            "frequency": "Week",
+            "interval": 1,
+            "timeZone": "SA Pacific Standard Time",
+            "schedule": {
+              "weekDays": [
+                "Monday",
+                "Thursday",
+                "Tuesday",
+                "Wednesday",
+                "Friday",
+                "Saturday",
+                "Sunday"
+              ],
+              "hours": [
+                "0"
+              ],
+              "minutes": [
+                0
+              ]
+            }
+          },
+          "evaluatedRecurrence": {
+            "frequency": "Week",
+            "interval": 1,
+            "timeZone": "SA Pacific Standard Time",
+            "schedule": {
+              "weekDays": [
+                "Monday",
+                "Thursday",
+                "Tuesday"
+              ],
+              "hours": [
+                "8"
+              ],
+              "minutes": [
+                0
+              ]
+            }
+          },
+          "metadata": {
+            "operationMetadataId": "82c7035a-b660-4399-b323-45262c8f60c0"
+          },
+          "type": "Recurrence"
+        }
+      },
+      "actions": {
+        "Run_a_Child_Flow": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "15cb4940-7809-4d77-9f3a-7d0fa1e4ebb9"
+          },
+          "type": "Workflow",
+          "inputs": {
+            "host": {
+              "workflowReferenceName": "ff4367ba-703d-f011-b4cc-7c1e5281f9ed"
+            }
+          }
+        },
+        "HTTP_-_Get_Information_UKG": {
+          "runAfter": {
+            "Send_an_email_(V2)": [
+              "Skipped"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "9d3e344b-cc26-4110-a58b-9b6e75825c51"
+          },
+          "type": "Http",
+          "inputs": {
+            "method": "GET",
+            "uri": "https://secure.saashr.com/ta/rest/v1/report/saved/107562189",
+            "headers": {
+              "Accept": "application/xml",
+              "Authentication": "Bearer @{body('Run_a_Child_Flow')?['token']}",
+              "Content-Type": "application/json",
+              "Content-length": "365"
+            }
+          }
+        },
+        "Compose": {
+          "runAfter": {
+            "HTTP_-_Get_Information_UKG": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "2777b680-31b8-4eee-b274-235f0e41126f"
+          },
+          "type": "Compose",
+          "inputs": "@body('HTTP_-_Get_Information_UKG')"
+        },
+        "Select": {
+          "runAfter": {
+            "Compose": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "f9496a82-37c8-469a-b67f-1f3a5928859a"
+          },
+          "type": "Select",
+          "inputs": {
+            "from": "@json(outputs('Compose'))['result']['body']['row']",
+            "select": {
+              "Consultant Name": "@concat(item()?['col'][0], ' ', item()?['col'][1])",
+              "Email": "@concat(item()?['col'][2],'@nextant.com')",
+              "Employee Status": "@item()?['col'][17]",
+              "Manager 1 Name": "@item()?['col'][5]",
+              "Manager 1 Alias": "@concat(item()?['col'][6],'@nextant.com')",
+              "SA Lead Name": "@item()?['col'][7]",
+              "SA Lead Alias": "@concat(item()?['col'][8],'@nextant.com')",
+              "V-Credentials Issued": "@item()?['col'][14]",
+              "V-Credentials Expiration": "@item()?['col'][15]",
+              "V-Active": "@item()?['col'][16]",
+              "Consultant Level": "@item()?['col'][11]",
+              "Date Hired": "@item()?['col'][3]",
+              "End Date": "@item()?['col'][18]",
+              "Billable Allocation": "@item()?['col'][19]",
+              "V-Break": "@item()?['col'][20]",
+              "V-Sponsor": "@item()?['col'][21]"
+            }
+          }
+        },
+        "Apply_to_each": {
+          "foreach": "@body('Select')",
+          "actions": {
+            "Condition_4": {
+              "actions": {},
+              "runAfter": {},
+              "else": {
+                "actions": {
+                  "List_rows_-_Consultants": {
+                    "runAfter": {},
+                    "metadata": {
+                      "operationMetadataId": "a5e69429-13df-40c3-b793-8a05c1edd087"
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "connectionName": "shared_commondataserviceforapps",
+                        "operationId": "ListRecords",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                      },
+                      "parameters": {
+                        "entityName": "cr6b0_consultants",
+                        "$filter": "cr6b0_email eq '@{items('Apply_to_each')?['Email']}'",
+                        "$top": 1
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    }
+                  },
+                  "Apply_to_each_2": {
+                    "foreach": "@outputs('List_rows_-_Consultants')?['body/value']",
+                    "actions": {
+                      "Set_variable_-_Consultant_ID": {
+                        "runAfter": {},
+                        "metadata": {
+                          "operationMetadataId": "52abf1cb-6f7a-4291-8e26-f538c3c4f5e8"
+                        },
+                        "type": "SetVariable",
+                        "inputs": {
+                          "name": "Consultant ID",
+                          "value": "@items('Apply_to_each_2')?['cr6b0_consultantid']"
+                        }
+                      },
+                      "List_rows_-_Consultants_2": {
+                        "runAfter": {
+                          "Set_variable_-_Consultant_ID": [
+                            "Succeeded"
+                          ]
+                        },
+                        "metadata": {
+                          "operationMetadataId": "d15c1d42-d6e6-4d1b-880a-bfef4060ec6a"
+                        },
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "connectionName": "shared_commondataserviceforapps",
+                            "operationId": "ListRecords",
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                          },
+                          "parameters": {
+                            "entityName": "cr6b0_consultants",
+                            "$filter": "cr6b0_email eq '@{items('Apply_to_each_2')?['cr6b0_peoplemanageralias']}'",
+                            "$top": 1
+                          },
+                          "authentication": "@parameters('$authentication')"
+                        }
+                      },
+                      "Apply_to_each_3": {
+                        "foreach": "@outputs('List_rows_-_Consultants_2')?['body/value']",
+                        "actions": {
+                          "Set_variable_-_People_Manager_ID": {
+                            "runAfter": {},
+                            "metadata": {
+                              "operationMetadataId": "01d0fa0c-146e-4356-a55f-0de1cbb90a5a"
+                            },
+                            "type": "SetVariable",
+                            "inputs": {
+                              "name": "People Manager ID",
+                              "value": "@{if(\r\n  empty(items('Apply_to_each_3')?['cr6b0_consultantid']),\r\n  '',\r\n  concat(\r\n    '/cr6b0_consultants(',\r\n    items('Apply_to_each_3')?['cr6b0_consultantid'],\r\n    ')'\r\n  )\r\n)\r\n}"
+                            }
+                          }
+                        },
+                        "runAfter": {
+                          "List_rows_-_Consultants_2": [
+                            "Succeeded"
+                          ]
+                        },
+                        "metadata": {
+                          "operationMetadataId": "82fad992-e461-4490-88c1-fcf8df1116dc"
+                        },
+                        "type": "Foreach"
+                      },
+                      "List_rows_-_Specialization_Areas": {
+                        "runAfter": {
+                          "Apply_to_each_3": [
+                            "Succeeded"
+                          ]
+                        },
+                        "metadata": {
+                          "operationMetadataId": "5abbf39d-b5b6-40bc-8003-014ec658da24"
+                        },
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "connectionName": "shared_commondataserviceforapps",
+                            "operationId": "ListRecords",
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                          },
+                          "parameters": {
+                            "entityName": "cr6b0_specializationareas",
+                            "$filter": "cr6b0_specializationarealeademail eq '@{items('Apply_to_each_2')?['cr6b0_saleadalias']}'",
+                            "$top": 1
+                          },
+                          "authentication": "@parameters('$authentication')"
+                        }
+                      },
+                      "Apply_to_each_4": {
+                        "foreach": "@outputs('List_rows_-_Specialization_Areas')?['body/value']",
+                        "actions": {
+                          "Set_variable_-_SA_ID": {
+                            "runAfter": {},
+                            "metadata": {
+                              "operationMetadataId": "e547194e-cf7f-49b5-935d-735e143b74e7"
+                            },
+                            "type": "SetVariable",
+                            "inputs": {
+                              "name": "SA ID",
+                              "value": "@{if(\r\n  empty(items('Apply_to_each_4')?['cr6b0_specializationareaid']),\r\n  '',\r\n  concat(\r\n    '/cr6b0_specializationareas(',\r\n    items('Apply_to_each_4')?['cr6b0_specializationareaid'],\r\n    ')'\r\n  )\r\n)\r\n }"
+                            }
+                          }
+                        },
+                        "runAfter": {
+                          "List_rows_-_Specialization_Areas": [
+                            "Succeeded"
+                          ]
+                        },
+                        "metadata": {
+                          "operationMetadataId": "2deb4085-0427-4d04-bb1c-13b9578f2401"
+                        },
+                        "type": "Foreach"
+                      },
+                      "Condition_5": {
+                        "actions": {
+                          "Condition_6": {
+                            "actions": {
+                              "Condition_7": {
+                                "actions": {
+                                  "Get_user_profile_(V2)": {
+                                    "runAfter": {},
+                                    "metadata": {
+                                      "operationMetadataId": "21124ab3-e481-42b7-a738-2c5155b76a0c"
+                                    },
+                                    "type": "OpenApiConnection",
+                                    "inputs": {
+                                      "host": {
+                                        "connectionName": "shared_office365users",
+                                        "operationId": "UserProfile_V2",
+                                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365users"
+                                      },
+                                      "parameters": {
+                                        "id": "@items('Apply_to_each')?['Email']",
+                                        "$select": "officeLocation"
+                                      },
+                                      "authentication": "@parameters('$authentication')"
+                                    }
+                                  },
+                                  "Set_variable_-_Location": {
+                                    "runAfter": {
+                                      "Get_user_profile_(V2)": [
+                                        "Succeeded"
+                                      ]
+                                    },
+                                    "metadata": {
+                                      "operationMetadataId": "c947f82f-e38b-4d74-b9c8-b0a3020fe787"
+                                    },
+                                    "type": "SetVariable",
+                                    "inputs": {
+                                      "name": "Location",
+                                      "value": "@{if(\r\n  or(\r\n    equals(outputs('Get_user_profile_(V2)')?['body/officeLocation'], 'Bogota'),\r\n    equals(outputs('Get_user_profile_(V2)')?['body/officeLocation'], 'Bogotá')\r\n  ),\r\n  'Colombia',\r\n  'United States'\r\n)\r\n}"
+                                    }
+                                  }
+                                },
+                                "runAfter": {},
+                                "else": {
+                                  "actions": {
+                                    "Set_variable_-_Location_DJOYA": {
+                                      "runAfter": {},
+                                      "metadata": {
+                                        "operationMetadataId": "277c28e4-6290-4bbf-866b-c4a819f6f8a9"
+                                      },
+                                      "type": "SetVariable",
+                                      "inputs": {
+                                        "name": "Location",
+                                        "value": "Colombia"
+                                      }
+                                    }
+                                  }
+                                },
+                                "expression": {
+                                  "not": {
+                                    "equals": [
+                                      "@items('Apply_to_each')?['Email']",
+                                      "djoya@nextant.com"
+                                    ]
+                                  }
+                                },
+                                "metadata": {
+                                  "operationMetadataId": "8c0f38f8-e269-418c-bdfd-3a6b053759fd"
+                                },
+                                "type": "If"
+                              }
+                            },
+                            "runAfter": {},
+                            "else": {
+                              "actions": {
+                                "Set_variable_-_Location_KSMRECANSKY": {
+                                  "runAfter": {},
+                                  "metadata": {
+                                    "operationMetadataId": "6ab2c27a-1633-4e75-b7aa-4ce3ac671dc2"
+                                  },
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "name": "Location",
+                                    "value": "United States"
+                                  }
+                                }
+                              }
+                            },
+                            "expression": {
+                              "not": {
+                                "equals": [
+                                  "@items('Apply_to_each')?['Email']",
+                                  "ksmrecansky@nextant.com"
+                                ]
+                              }
+                            },
+                            "metadata": {
+                              "operationMetadataId": "9d698012-a9e2-4866-9d01-c344a8ef6387"
+                            },
+                            "type": "If"
+                          }
+                        },
+                        "runAfter": {
+                          "Apply_to_each_4": [
+                            "Succeeded"
+                          ]
+                        },
+                        "expression": {
+                          "and": [
+                            {
+                              "equals": [
+                                "@items('Apply_to_each')?['Employee Status']",
+                                "Active"
+                              ]
+                            },
+                            {
+                              "not": {
+                                "contains": [
+                                  "@items('Apply_to_each')?['Consultant Level']",
+                                  "AMD"
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        "metadata": {
+                          "operationMetadataId": "83f3b7ed-2373-4d7c-9d4e-803feb169d66"
+                        },
+                        "type": "If"
+                      },
+                      "Compose_-_Consultant_Level": {
+                        "runAfter": {
+                          "Condition_5": [
+                            "Succeeded"
+                          ]
+                        },
+                        "metadata": {
+                          "operationMetadataId": "f10d34fa-0460-4898-90b8-1a4843b522c7"
+                        },
+                        "type": "Compose",
+                        "inputs": "@if(\r\n  or(\r\n    empty(items('Apply_to_each')?['Consultant Level']),\r\n    empty(items('Apply_to_each_2')?['cr6b0_location'])\r\n  ),\r\n  '',\r\n  concat(\r\n    items('Apply_to_each')?['Consultant Level'],\r\n    ' ',\r\n    items('Apply_to_each_2')?['cr6b0_location']\r\n  )\r\n)\r\n"
+                      },
+                      "Condition": {
+                        "actions": {
+                          "List_rows_-_Role_Dictionary": {
+                            "runAfter": {},
+                            "metadata": {
+                              "operationMetadataId": "892d113e-5735-44cb-b0ce-cafb597738f4"
+                            },
+                            "type": "OpenApiConnection",
+                            "inputs": {
+                              "host": {
+                                "connectionName": "shared_commondataserviceforapps",
+                                "operationId": "ListRecords",
+                                "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                              },
+                              "parameters": {
+                                "entityName": "cr6b0_roledictionaries",
+                                "$filter": "cr6b0_roleukg eq '@{outputs('Compose_-_Consultant_Level')}'",
+                                "$top": 1
+                              },
+                              "authentication": "@parameters('$authentication')"
+                            }
+                          },
+                          "Apply_to_each_5": {
+                            "foreach": "@outputs('List_rows_-_Role_Dictionary')?['body/value']",
+                            "actions": {
+                              "Set_variable_-_Role_2": {
+                                "runAfter": {},
+                                "metadata": {
+                                  "operationMetadataId": "0573f764-a85c-453a-8371-a044c395ed18"
+                                },
+                                "type": "SetVariable",
+                                "inputs": {
+                                  "name": "Role",
+                                  "value": "@items('Apply_to_each_5')?['cr6b0_equivalentrole']"
+                                }
+                              }
+                            },
+                            "runAfter": {
+                              "List_rows_-_Role_Dictionary": [
+                                "Succeeded"
+                              ]
+                            },
+                            "metadata": {
+                              "operationMetadataId": "4f290abd-7eaa-4e5b-b8c4-7c647f109723"
+                            },
+                            "type": "Foreach"
+                          }
+                        },
+                        "runAfter": {
+                          "Compose_-_Consultant_Level": [
+                            "Succeeded"
+                          ]
+                        },
+                        "expression": {
+                          "not": {
+                            "equals": [
+                              "@outputs('Compose_-_Consultant_Level')",
+                              null
+                            ]
+                          }
+                        },
+                        "metadata": {
+                          "operationMetadataId": "a4ebdb68-bae3-4433-bfeb-e32814431a45"
+                        },
+                        "type": "If"
+                      }
+                    },
+                    "runAfter": {
+                      "List_rows_-_Consultants": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "7192a5eb-852b-4d04-b716-4346d1f3df03"
+                    },
+                    "type": "Foreach"
+                  },
+                  "Set_variable_-_Consultant_ID_2": {
+                    "runAfter": {
+                      "Upsert_a_row_-_Consultants": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "5b53748f-9135-4eff-aa55-1fd16a31b6ec"
+                    },
+                    "type": "SetVariable",
+                    "inputs": {
+                      "name": "Consultant ID",
+                      "value": "@{guid()}"
+                    }
+                  },
+                  "Set_variable_-_People_Manager_ID_2": {
+                    "runAfter": {
+                      "Set_variable_-_Consultant_ID_2": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "d52042b8-8a76-4a8e-9fe8-e52c2a2b10b3"
+                    },
+                    "type": "SetVariable",
+                    "inputs": {
+                      "name": "People Manager ID",
+                      "value": "@{null}"
+                    }
+                  },
+                  "Set_variable_-_SA_ID_2": {
+                    "runAfter": {
+                      "Set_variable_-_People_Manager_ID_2": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "b803ac06-47eb-4996-925c-8d735c074792"
+                    },
+                    "type": "SetVariable",
+                    "inputs": {
+                      "name": "SA ID",
+                      "value": "@{null}"
+                    }
+                  },
+                  "Set_variable_-_Location_2": {
+                    "runAfter": {
+                      "Set_variable_-_SA_ID_2": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "e2335af1-61e1-4b6e-b4fb-abbad94b2246"
+                    },
+                    "type": "SetVariable",
+                    "inputs": {
+                      "name": "Location",
+                      "value": "@{null}"
+                    }
+                  },
+                  "Set_variable_-_Role_4": {
+                    "runAfter": {
+                      "Set_variable_-_Location_2": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "9e196a74-3e58-4727-bc1c-84cc1dfabe8d"
+                    },
+                    "type": "SetVariable",
+                    "inputs": {
+                      "name": "Role",
+                      "value": "@{null}"
+                    }
+                  },
+                  "Upsert_a_row_-_Consultants": {
+                    "runAfter": {
+                      "Apply_to_each_2": [
+                        "Succeeded"
+                      ]
+                    },
+                    "metadata": {
+                      "operationMetadataId": "dee3f78f-89c5-49f7-a26c-54949e161313"
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "connectionName": "shared_commondataserviceforapps",
+                        "operationId": "UpdateRecord",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                      },
+                      "parameters": {
+                        "entityName": "cr6b0_consultants",
+                        "recordId": "@variables('Consultant ID')",
+                        "item/cr6b0_consultantname": "@items('Apply_to_each')?['Consultant Name']",
+                        "item/cr6b0_billablepercentage": "@if(\r\n  not(empty(items('Apply_to_each')?['Billable Allocation'])),\r\n  div(float(items('Apply_to_each')?['Billable Allocation']), 100),\r\n  null\r\n)\r\n",
+                        "item/cr6b0_consultantlevel": "@items('Apply_to_each')?['Consultant Level']",
+                        "item/cr6b0_email": "@items('Apply_to_each')?['Email']",
+                        "item/cr6b0_employeestatus": "@if(equals(items('Apply_to_each')?['Employee Status'], 'Active'), true, false)",
+                        "item/cr6b0_enddate": "@items('Apply_to_each')?['End Date']",
+                        "item/cr6b0_hireddate": "@items('Apply_to_each')?['Date Hired']",
+                        "item/cr6b0_location": "@variables('Location')",
+                        "item/cr6b0_peoplemanageralias": "@if(equals(items('Apply_to_each')?['Manager 1 Name'], null), '', items('Apply_to_each')?['Manager 1 Alias'])",
+                        "item/cr6b0_PeopleManagerName@odata.bind": "@if(\r\n  empty(variables('People Manager ID')),\r\n  null,\r\n  variables('People Manager ID')\r\n)\r\n",
+                        "item/cr6b0_rolename": "@variables('Role')",
+                        "item/cr6b0_saleadalias": "@if(equals(items('Apply_to_each')?['SA Lead Name'], null), '', items('Apply_to_each')?['SA Lead Alias'])",
+                        "item/cr6b0_saleadname": "@items('Apply_to_each')?['SA Lead Name']",
+                        "item/cr6b0_SpecializationArea@odata.bind": "@if(empty(variables('SA ID')), null, variables('SA ID'))\r\n",
+                        "item/cr6b0_vactive": "@if(equals(items('Apply_to_each')?['V-Active'], 'Yes'), true, false)",
+                        "item/cr6b0_vbreak": "@items('Apply_to_each')?['V-Break']",
+                        "item/cr6b0_vcredentialexpiration": "@items('Apply_to_each')?['V-Credentials Expiration']",
+                        "item/cr6b0_vcredentialsissued": "@items('Apply_to_each')?['V-Credentials Issued']",
+                        "item/cr6b0_vsponsor": "@items('Apply_to_each')?['V-Sponsor']"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    }
+                  }
+                }
+              },
+              "expression": {
+                "contains": [
+                  "@toLower(items('Apply_to_each')?['Consultant Name'])",
+                  "test"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "fe998852-2609-423e-a873-fb973c05ae59"
+              },
+              "type": "If"
+            }
+          },
+          "runAfter": {
+            "Initialize_variable_-_Role": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "94d0afb3-b2bc-45d7-8a58-fe75028b7ca8"
+          },
+          "type": "Foreach"
+        },
+        "Initialize_variable_-_Consultant_ID": {
+          "runAfter": {
+            "Select": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "78895c03-1b84-4bfc-bb7b-d0467deea70e"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Consultant ID",
+                "type": "string",
+                "value": "@{guid()}"
+              }
+            ]
+          }
+        },
+        "Initialize_variable_-_People_Manager_ID": {
+          "runAfter": {
+            "Initialize_variable_-_Consultant_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "8f2a4f2f-644c-4017-89d8-524e8dcfd1d2"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "People Manager ID",
+                "type": "string",
+                "value": "@{null}"
+              }
+            ]
+          }
+        },
+        "Initialize_variable_-_SA_ID": {
+          "runAfter": {
+            "Initialize_variable_-_People_Manager_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "a14dab78-439b-4621-91a4-545a2ac9bbac"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "SA ID",
+                "type": "string",
+                "value": "@{null}"
+              }
+            ]
+          }
+        },
+        "Initialize_variable_-_Location": {
+          "runAfter": {
+            "Initialize_variable_-_SA_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "0ec104f5-67eb-40d8-9aa3-5154e0252522"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Location",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "Initialize_variable_-_Role": {
+          "runAfter": {
+            "Initialize_variable_-_Location": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "5669988c-fe69-4416-a321-160d223877f7"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Role",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "Send_an_email_(V2)_2": {
+          "runAfter": {
+            "Apply_to_each": [
+              "Failed",
+              "TimedOut"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "8237b928-1bb1-4610-9ae3-49ab7e95e42f"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_office365_1",
+              "operationId": "SendEmailV2",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+            },
+            "parameters": {
+              "emailMessage/To": "jrojas@nextant.com;ssangal@nextant.com",
+              "emailMessage/Subject": "The Get Information UKG - Consultants flow has failed",
+              "emailMessage/Body": "<p>The Get Information UKG - Consultants flow has failed, pelase review it on the Power Automate site.</p>",
+              "emailMessage/Importance": "Normal"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Send_an_email_(V2)": {
+          "runAfter": {
+            "Run_a_Child_Flow": [
+              "Failed",
+              "TimedOut"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "8237b928-1bb1-4610-9ae3-49ab7e95e42f"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_office365_1",
+              "operationId": "SendEmailV2",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+            },
+            "parameters": {
+              "emailMessage/To": "jrojas@nextant.com;ssangal@nextant.com",
+              "emailMessage/Subject": "Consultants flow has failed due to authentication error",
+              "emailMessage/Body": "<p>The Get Information UKG - Consultants flow has failed, pelase review it on the Power Automate site.</p>",
+              "emailMessage/Cc": "emonsalve@nextant.com",
+              "emailMessage/Importance": "Normal"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      }
+    },
+    "templateName": ""
+  },
+  "schemaVersion": "1.0.0.0"
+}

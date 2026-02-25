@@ -1,0 +1,86 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_office365": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr41e_sharedoffice365_c6fd2"
+        },
+        "api": {
+          "name": "shared_office365"
+        }
+      },
+      "shared_commondataserviceforapps": {
+        "impersonation": {},
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr6b0_sharedcommondataserviceforapps_17284"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "When_a_row_is_modified_-_Opportunity": {
+          "metadata": {
+            "operationMetadataId": "4baad893-d21f-4630-945e-a76adaac1f12"
+          },
+          "type": "OpenApiConnectionWebhook",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "SubscribeWebhookTrigger"
+            },
+            "parameters": {
+              "subscriptionRequest/message": 3,
+              "subscriptionRequest/entityname": "cr6b0_opportunity",
+              "subscriptionRequest/scope": 4,
+              "subscriptionRequest/filteringattributes": "cr6b0_status"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      },
+      "actions": {
+        "Send_an_email_(V2)": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "72b9a9f4-72ca-4461-ad07-b53205df3213"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+              "connectionName": "shared_office365",
+              "operationId": "SendEmailV2"
+            },
+            "parameters": {
+              "emailMessage/To": "mmhuertas@nextant.com",
+              "emailMessage/Subject": "Opportunity Status Update: @{triggerOutputs()?['body/cr6b0_opportunityname']}",
+              "emailMessage/Body": "<!DOCTYPE html>\n<html>\n    <p>Hello,</p>\n\n    <p>\n      The status for the opportunity\n      <strong>@{triggerOutputs()?['body/cr6b0_opportunityname']}</strong>\n      has changed.\n    </p>\n\n    <p>\n      New Status:\n     <strong> @{triggerOutputs()?['body/_cr6b0_status_label']}</strong>\n    </p>\n\n    <p>\n      Please review the opportunity\n      <a href=\"@{triggerOutputs()?['body/cr49f_salesopptyurl']}\" target=\"_blank\">\n        here\n      </a>.\n    </p>\n\n    <p>Thank you.</p>\n  </body>\n</html>\n",
+              "emailMessage/Importance": "Normal"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      }
+    },
+    "templateName": null
+  },
+  "schemaVersion": "1.0.0.0"
+}

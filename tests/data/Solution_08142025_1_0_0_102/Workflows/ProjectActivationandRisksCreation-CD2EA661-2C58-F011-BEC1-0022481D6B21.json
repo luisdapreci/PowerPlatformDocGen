@@ -1,0 +1,174 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "impersonation": {},
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "cr6b0_sharedcommondataserviceforapps_17284"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "When_a_row_is_modified_-_Opportunities": {
+          "metadata": {
+            "operationMetadataId": "6b4e1cc1-ef20-4ea5-9e6b-53eb56ed7cdb"
+          },
+          "type": "OpenApiConnectionWebhook",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "SubscribeWebhookTrigger"
+            },
+            "parameters": {
+              "subscriptionRequest/message": 3,
+              "subscriptionRequest/entityname": "cr6b0_opportunity",
+              "subscriptionRequest/scope": 4,
+              "subscriptionRequest/filteringattributes": "cr6b0_status",
+              "subscriptionRequest/filterexpression": "cr6b0_status eq 2"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      },
+      "actions": {
+        "List_rows_-_Projects": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "752bc8cc-d348-47f5-becf-20c7107220e4"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "ListRecords"
+            },
+            "parameters": {
+              "entityName": "cr6b0_projects",
+              "$filter": "_cr6b0_opportunity_value eq '@{triggerOutputs()?['body/cr6b0_opportunityid']}'"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Apply_to_each": {
+          "foreach": "@outputs('List_rows_-_Projects')?['body/value']",
+          "actions": {
+            "Update_a_row_-_Project": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "457de050-6e67-42c3-aef2-30227f789ffa"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "UpdateOnlyRecord"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_projects",
+                  "recordId": "@items('Apply_to_each')?['cr6b0_projectid']",
+                  "item/cr6b0_currentprojectstatus": 1
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "List_rows_-_Opportunity_Risks": {
+              "runAfter": {
+                "Update_a_row_-_Project": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "e27bf775-d171-46a1-8598-24a3916a8bc2"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords"
+                },
+                "parameters": {
+                  "entityName": "cr6b0_opportunityrisks",
+                  "$filter": "_cr6b0_opportunity_value eq '@{triggerOutputs()?['body/cr6b0_opportunityid']}' and _cr6b0_project_value eq '@{outputs('Update_a_row_-_Project')?['body/cr6b0_projectid']}'"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Apply_to_each_2": {
+              "foreach": "@outputs('List_rows_-_Opportunity_Risks')?['body/value']",
+              "actions": {
+                "Add_a_new_row_-_Risks": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "cd3f049d-4606-4f7f-b9f9-f25b5a1d6873"
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "CreateRecord"
+                    },
+                    "parameters": {
+                      "entityName": "cr6b0_risks",
+                      "item/cr6b0_AssignedOwner@odata.bind": "@concat('/cr6b0_consultants(', items('Apply_to_each_2')?['_cr6b0_assignedowner_value'], ')')",
+                      "item/cr6b0_relatedproject@odata.bind": "@concat('/cr6b0_projects(', items('Apply_to_each_2')?['_cr6b0_project_value'], ')')",
+                      "item/cr6b0_categoryofrisk": "@items('Apply_to_each_2')?['cr6b0_riskcategory']",
+                      "item/cr6b0_currentstatus": "@items('Apply_to_each_2')?['cr6b0_currentstatus']",
+                      "item/cr6b0_descriptionofrisk": "@items('Apply_to_each_2')?['cr6b0_riskdescription']",
+                      "item/cr6b0_impactarea": "@items('Apply_to_each_2')?['cr6b0_impactarea']",
+                      "item/cr6b0_mitigationstrategy": "@items('Apply_to_each_2')?['cr6b0_mitigationstrategy']",
+                      "item/cr6b0_severitylevel": "@items('Apply_to_each_2')?['cr6b0_severitylevel']",
+                      "item/cr6b0_titleofrisk": "@items('Apply_to_each_2')?['cr6b0_risktitle']"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              },
+              "runAfter": {
+                "List_rows_-_Opportunity_Risks": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "5a78f72c-36a2-4468-8c0a-8c3e7e9a1204"
+              },
+              "type": "Foreach"
+            }
+          },
+          "runAfter": {
+            "List_rows_-_Projects": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "76515c3b-f5da-4594-b5d6-84e23a22eb48"
+          },
+          "type": "Foreach"
+        }
+      }
+    },
+    "templateName": null
+  },
+  "schemaVersion": "1.0.0.0"
+}

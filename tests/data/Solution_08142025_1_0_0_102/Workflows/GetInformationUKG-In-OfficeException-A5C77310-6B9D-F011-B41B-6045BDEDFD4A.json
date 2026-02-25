@@ -1,0 +1,364 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "new_sharedcommondataserviceforapps_43544"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      },
+      "shared_office365_1": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "new_sharedoffice365_06192"
+        },
+        "api": {
+          "name": "shared_office365"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "Recurrence": {
+          "recurrence": {
+            "frequency": "Day",
+            "interval": 1,
+            "timeZone": "SA Pacific Standard Time",
+            "schedule": {
+              "hours": [
+                "8"
+              ],
+              "minutes": [
+                0
+              ]
+            }
+          },
+          "evaluatedRecurrence": {
+            "frequency": "Day",
+            "interval": 1,
+            "timeZone": "SA Pacific Standard Time",
+            "schedule": {
+              "hours": [
+                "8"
+              ],
+              "minutes": [
+                0
+              ]
+            }
+          },
+          "metadata": {
+            "operationMetadataId": "82c7035a-b660-4399-b323-45262c8f60c0"
+          },
+          "type": "Recurrence"
+        }
+      },
+      "actions": {
+        "Run_a_Child_Flow": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "15cb4940-7809-4d77-9f3a-7d0fa1e4ebb9"
+          },
+          "type": "Workflow",
+          "inputs": {
+            "host": {
+              "workflowReferenceName": "ff4367ba-703d-f011-b4cc-7c1e5281f9ed"
+            }
+          }
+        },
+        "HTTP_-_Get_Information_UKG": {
+          "runAfter": {
+            "Send_an_email_(V2)": [
+              "Skipped"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "9d3e344b-cc26-4110-a58b-9b6e75825c51"
+          },
+          "type": "Http",
+          "inputs": {
+            "method": "GET",
+            "uri": "https://secure.saashr.com/ta/rest/v1/report/saved/107710553",
+            "headers": {
+              "Accept": "application/xml",
+              "Authentication": "Bearer @{body('Run_a_Child_Flow')?['token']}",
+              "Content-Type": "application/json",
+              "Content-length": "365"
+            }
+          }
+        },
+        "Compose": {
+          "runAfter": {
+            "HTTP_-_Get_Information_UKG": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "2777b680-31b8-4eee-b274-235f0e41126f"
+          },
+          "type": "Compose",
+          "inputs": "@body('HTTP_-_Get_Information_UKG')"
+        },
+        "Select": {
+          "runAfter": {
+            "Compose": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "f9496a82-37c8-469a-b67f-1f3a5928859a"
+          },
+          "type": "Select",
+          "inputs": {
+            "from": "@json(outputs('Compose'))['result']['body']['row']",
+            "select": {
+              "Name": "@concat(item()?['col'][0],' ',item()?['col'][1])",
+              "Employee Status": "@item()?['col'][2]",
+              "Request Status": "@item()?['col'][3]",
+              "City and Country": "@item()?['col'][4]",
+              "Days Requested": "@item()?['col'][5]",
+              "Start Date": "@item()?['col'][6]",
+              "End Date": "@item()?['col'][7]",
+              "Additional Details": "@item()?['col'][8]",
+              "Request Created": "@concat(item()?['col'][9],'m')"
+            }
+          }
+        },
+        "Apply_to_each_Request": {
+          "foreach": "@body('Select')",
+          "actions": {
+            "Apply_to_each_Row": {
+              "foreach": "@outputs('List_rows_-_In-Office_Exceptions')?['body/value']",
+              "actions": {
+                "Set_variable_-_Request_ID_2": {
+                  "runAfter": {},
+                  "metadata": {
+                    "operationMetadataId": "52abf1cb-6f7a-4291-8e26-f538c3c4f5e8"
+                  },
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "Request ID",
+                    "value": "@items('Apply_to_each_Row')?['cr41e_inofficeexceptionid']"
+                  }
+                }
+              },
+              "runAfter": {
+                "List_rows_-_In-Office_Exceptions": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "7192a5eb-852b-4d04-b716-4346d1f3df03"
+              },
+              "type": "Foreach"
+            },
+            "Upsert_a_row_-_In-Office_Exceptions": {
+              "runAfter": {
+                "Apply_to_each_Row": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "9c9ba4f7-1a95-4dc4-a706-b3ee106c656f"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "UpdateRecord",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr41e_inofficeexceptions",
+                  "recordId": "@variables('Request ID')",
+                  "item/cr41e_requestid": "@variables('UniqueRequest')",
+                  "item/cr41e_cityandcountry": "@items('Apply_to_each_Request')?['City and Country']",
+                  "item/cr6b0_daysrequested": "@items('Apply_to_each_Request')?['Days Requested']",
+                  "item/cr41e_employeestatus": "@items('Apply_to_each_Request')?['Employee Status']",
+                  "item/cr41e_enddate": "@items('Apply_to_each_Request')?['End Date']",
+                  "item/cr41e_name": "@items('Apply_to_each_Request')?['Name']",
+                  "item/cr41e_requestcreated": "@items('Apply_to_each_Request')?['Request Created']",
+                  "item/cr41e_requeststatus": "@items('Apply_to_each_Request')?['Request Status']",
+                  "item/cr41e_startdate": "@items('Apply_to_each_Request')?['Start Date']"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Set_variable": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "8d9c56a7-5559-48b0-96a8-3bc5210ec5d0"
+              },
+              "type": "SetVariable",
+              "inputs": {
+                "name": "UniqueRequest",
+                "value": "@{concat(items('Apply_to_each_Request')?['Name'],items('Apply_to_each_Request')?['Request Created'])}"
+              }
+            },
+            "List_rows_-_In-Office_Exceptions": {
+              "runAfter": {
+                "Set_variable": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "a5e69429-13df-40c3-b793-8a05c1edd087"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "ListRecords",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "cr41e_inofficeexceptions",
+                  "$filter": "cr41e_requestid eq '@{variables('UniqueRequest')}'",
+                  "$top": 1
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Set_variable_2": {
+              "runAfter": {
+                "Upsert_a_row_-_In-Office_Exceptions": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "e6c9fda8-1055-48f5-88ad-2c753edc562e"
+              },
+              "type": "SetVariable",
+              "inputs": {
+                "name": "Request ID",
+                "value": "@{guid()}"
+              }
+            }
+          },
+          "runAfter": {
+            "Initialize_variable_-_Unique_Request": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "94d0afb3-b2bc-45d7-8a58-fe75028b7ca8"
+          },
+          "type": "Foreach",
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 1
+            }
+          }
+        },
+        "Initialize_variable_-_Request_ID": {
+          "runAfter": {
+            "Select": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "78895c03-1b84-4bfc-bb7b-d0467deea70e"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Request ID",
+                "type": "string",
+                "value": "@{guid()}"
+              }
+            ]
+          }
+        },
+        "Send_an_email_(V2)_2": {
+          "runAfter": {
+            "Apply_to_each_Request": [
+              "Failed",
+              "TimedOut"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "8237b928-1bb1-4610-9ae3-49ab7e95e42f"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_office365_1",
+              "operationId": "SendEmailV2",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+            },
+            "parameters": {
+              "emailMessage/To": "ssangal@nextant.com;jrojas@nextant.com",
+              "emailMessage/Subject": "The Get Information UKG - In-Office Exception flow has failed",
+              "emailMessage/Body": "<p>The Get Information UKG - In-Office Exception flow has failed, pelase review it on the Power Automate site.</p>",
+              "emailMessage/Importance": "Normal"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Initialize_variable_-_Unique_Request": {
+          "runAfter": {
+            "Initialize_variable_-_Request_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "ce639cb8-9be4-4259-a8b4-37ea55d0ebef"
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "UniqueRequest",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "Send_an_email_(V2)": {
+          "runAfter": {
+            "Run_a_Child_Flow": [
+              "Failed",
+              "TimedOut"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "8237b928-1bb1-4610-9ae3-49ab7e95e42f"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_office365_1",
+              "operationId": "SendEmailV2",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+            },
+            "parameters": {
+              "emailMessage/To": "ssangal@nextant.com;jrojas@nextant.com",
+              "emailMessage/Subject": "In-Office Exception flow has failed due to authentication error",
+              "emailMessage/Body": "<p>The Get Information UKG - In-Office Exception flow has failed, pelase review it on the Power Automate site.</p>",
+              "emailMessage/Cc": "emonsalve@nextant.com",
+              "emailMessage/Importance": "Normal"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      }
+    },
+    "templateName": ""
+  },
+  "schemaVersion": "1.0.0.0"
+}

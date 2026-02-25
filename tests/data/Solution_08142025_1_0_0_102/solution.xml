@@ -1,0 +1,249 @@
+<ImportExportXml version="9.2.25123.162" SolutionPackageVersion="9.2" languagecode="1033" generatedBy="CrmLive" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" OrganizationVersion="9.2.25123.162" OrganizationSchemaType="Standard" CRMServerServiceabilityVersion="9.2.25123.00166">
+  <SolutionManifest>
+    <UniqueName>Solution_08142025</UniqueName>
+    <LocalizedNames>
+      <LocalizedName description="Solution_08082025" languagecode="1033" />
+    </LocalizedNames>
+    <Descriptions />
+    <Version>1.0.0.102</Version>
+    <Managed>0</Managed>
+    <Publisher>
+      <UniqueName>Cr96aca</UniqueName>
+      <LocalizedNames>
+        <LocalizedName description="CDS Default Publisher" languagecode="1033" />
+      </LocalizedNames>
+      <Descriptions />
+      <EMailAddress xsi:nil="true"></EMailAddress>
+      <SupportingWebsiteUrl xsi:nil="true"></SupportingWebsiteUrl>
+      <CustomizationPrefix>cr41e</CustomizationPrefix>
+      <CustomizationOptionValuePrefix>27692</CustomizationOptionValuePrefix>
+      <Addresses>
+        <Address>
+          <AddressNumber>1</AddressNumber>
+          <AddressTypeCode xsi:nil="true"></AddressTypeCode>
+          <City xsi:nil="true"></City>
+          <County xsi:nil="true"></County>
+          <Country xsi:nil="true"></Country>
+          <Fax xsi:nil="true"></Fax>
+          <FreightTermsCode xsi:nil="true"></FreightTermsCode>
+          <ImportSequenceNumber xsi:nil="true"></ImportSequenceNumber>
+          <Latitude xsi:nil="true"></Latitude>
+          <Line1 xsi:nil="true"></Line1>
+          <Line2 xsi:nil="true"></Line2>
+          <Line3 xsi:nil="true"></Line3>
+          <Longitude xsi:nil="true"></Longitude>
+          <Name xsi:nil="true"></Name>
+          <PostalCode xsi:nil="true"></PostalCode>
+          <PostOfficeBox xsi:nil="true"></PostOfficeBox>
+          <PrimaryContactName xsi:nil="true"></PrimaryContactName>
+          <ShippingMethodCode xsi:nil="true"></ShippingMethodCode>
+          <StateOrProvince xsi:nil="true"></StateOrProvince>
+          <Telephone1 xsi:nil="true"></Telephone1>
+          <Telephone2 xsi:nil="true"></Telephone2>
+          <Telephone3 xsi:nil="true"></Telephone3>
+          <TimeZoneRuleVersionNumber xsi:nil="true"></TimeZoneRuleVersionNumber>
+          <UPSZone xsi:nil="true"></UPSZone>
+          <UTCOffset xsi:nil="true"></UTCOffset>
+          <UTCConversionTimeZoneCode xsi:nil="true"></UTCConversionTimeZoneCode>
+        </Address>
+        <Address>
+          <AddressNumber>2</AddressNumber>
+          <AddressTypeCode xsi:nil="true"></AddressTypeCode>
+          <City xsi:nil="true"></City>
+          <County xsi:nil="true"></County>
+          <Country xsi:nil="true"></Country>
+          <Fax xsi:nil="true"></Fax>
+          <FreightTermsCode xsi:nil="true"></FreightTermsCode>
+          <ImportSequenceNumber xsi:nil="true"></ImportSequenceNumber>
+          <Latitude xsi:nil="true"></Latitude>
+          <Line1 xsi:nil="true"></Line1>
+          <Line2 xsi:nil="true"></Line2>
+          <Line3 xsi:nil="true"></Line3>
+          <Longitude xsi:nil="true"></Longitude>
+          <Name xsi:nil="true"></Name>
+          <PostalCode xsi:nil="true"></PostalCode>
+          <PostOfficeBox xsi:nil="true"></PostOfficeBox>
+          <PrimaryContactName xsi:nil="true"></PrimaryContactName>
+          <ShippingMethodCode xsi:nil="true"></ShippingMethodCode>
+          <StateOrProvince xsi:nil="true"></StateOrProvince>
+          <Telephone1 xsi:nil="true"></Telephone1>
+          <Telephone2 xsi:nil="true"></Telephone2>
+          <Telephone3 xsi:nil="true"></Telephone3>
+          <TimeZoneRuleVersionNumber xsi:nil="true"></TimeZoneRuleVersionNumber>
+          <UPSZone xsi:nil="true"></UPSZone>
+          <UTCOffset xsi:nil="true"></UTCOffset>
+          <UTCConversionTimeZoneCode xsi:nil="true"></UTCConversionTimeZoneCode>
+        </Address>
+      </Addresses>
+    </Publisher>
+    <RootComponents>
+      <RootComponent type="1" schemaName="cr41e_businessdays" behavior="0" />
+      <RootComponent type="1" schemaName="cr41e_effortbreakdown" behavior="0" />
+      <RootComponent type="1" schemaName="cr41e_effortcalculation" behavior="0" />
+      <RootComponent type="1" schemaName="cr41e_inofficeexception" behavior="0" />
+      <RootComponent type="1" schemaName="cr41e_projectpricing" behavior="0" />
+      <RootComponent type="1" schemaName="cr41e_remotework" behavior="0" />
+      <RootComponent type="1" schemaName="cr41e_satasks" behavior="0" />
+      <RootComponent type="1" schemaName="cr49f_billablehours" behavior="0" />
+      <RootComponent type="1" schemaName="cr49f_ratetype" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_calendar" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_consultant" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_consultantpto" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_consultantskill" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_customersuccessmanager" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_daquestions" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_daquestionsprojectandevaluation" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_deliveryassessment" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_deliverymanager" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_exchangerate" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_hours" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_officeregistration" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_opportunity" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_opportunityrisk" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_pricingapprovalusers" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_project" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_projectgoal" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_projectphase" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_projectpl" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_projectresourcing" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_projectsizediscounts" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_projectsubphase" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_rate" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_risk" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_roledictionary" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_skill" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_specializationarea" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_stakeholder" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_starslist" behavior="0" />
+      <RootComponent type="1" schemaName="cr6b0_workstream" behavior="0" />
+      <RootComponent type="9" schemaName="cr6b0_opportunitystatus" behavior="0" />
+      <RootComponent type="9" schemaName="cr6b0_opptyactivesalesstage" behavior="0" />
+      <RootComponent type="9" schemaName="cr6b0_opptybudget" behavior="0" />
+      <RootComponent type="9" schemaName="cr6b0_opptyforecastcategories" behavior="0" />
+      <RootComponent type="9" schemaName="cr6b0_opptypipelinephase" behavior="0" />
+      <RootComponent type="9" schemaName="cr6b0_opptysalesstage" behavior="0" />
+      <RootComponent type="9" schemaName="cr6b0_opptysalesstage2" behavior="0" />
+      <RootComponent type="9" schemaName="cr6b0_opptystatusreason" behavior="0" />
+      <RootComponent type="9" schemaName="cr6b0_opptytypes" behavior="0" />
+      <RootComponent type="20" id="{83185167-fc58-f011-bec1-0022481d6b21}" behavior="0" />
+      <RootComponent type="20" id="{ccb3b401-a456-f011-877a-0022481d6b21}" behavior="0" />
+      <RootComponent type="20" id="{fcb0547b-5757-f011-bec1-0022481d6b21}" behavior="0" />
+      <RootComponent type="29" id="{1c209c8b-d8c4-f011-bbd2-000d3a599163}" behavior="0" />
+      <RootComponent type="29" id="{2f5d16c0-7666-f011-bec2-0022481d6b21}" behavior="0" />
+      <RootComponent type="29" id="{2fce85ab-68af-f011-bbd3-000d3a599163}" behavior="0" />
+      <RootComponent type="29" id="{30ce85ab-68af-f011-bbd3-000d3a599163}" behavior="0" />
+      <RootComponent type="29" id="{3441c34a-4c1a-f011-998a-000d3a356907}" behavior="0" />
+      <RootComponent type="29" id="{4b72293f-1ab4-f011-bbd3-000d3a599163}" behavior="0" />
+      <RootComponent type="29" id="{5ab52ff3-8278-f011-b4cc-6045bdec9745}" behavior="0" />
+      <RootComponent type="29" id="{603a9f33-66d0-f011-bbd3-000d3a599163}" behavior="0" />
+      <RootComponent type="29" id="{649da898-4ff6-f011-8406-6045bd074eb9}" behavior="0" />
+      <RootComponent type="29" id="{6b1b5831-cbe4-f011-8544-000d3a599163}" behavior="0" />
+      <RootComponent type="29" id="{70cfc4c3-257d-f011-b4cc-6045bdec9745}" behavior="0" />
+      <RootComponent type="29" id="{724681d2-395c-f011-bec1-0022481d6b21}" behavior="0" />
+      <RootComponent type="29" id="{7a22d73e-e452-f011-877b-7c1e5281f9ed}" behavior="0" />
+      <RootComponent type="29" id="{9c41f9c9-f058-f011-bec1-0022481d6b21}" behavior="0" />
+      <RootComponent type="29" id="{a5c77310-6b9d-f011-b41b-6045bdedfd4a}" behavior="0" />
+      <RootComponent type="29" id="{b01b2ae3-fb97-f011-b4cb-000d3a53aedc}" behavior="0" />
+      <RootComponent type="29" id="{b2a7a37b-519a-f011-b41b-7ced8d1b8cc9}" behavior="0" />
+      <RootComponent type="29" id="{b2b7c7ab-1068-f011-bec1-6045bdec9745}" behavior="0" />
+      <RootComponent type="29" id="{bda173c8-dcd5-f011-8544-000d3a599163}" behavior="0" />
+      <RootComponent type="29" id="{c4952098-cd4a-f011-877a-7c1e5281f9ed}" behavior="0" />
+      <RootComponent type="29" id="{ca2fdfec-8e3d-f011-b4cc-7c1e5281f9ed}" behavior="0" />
+      <RootComponent type="29" id="{cb2ea661-2c58-f011-bec1-0022481d6b21}" behavior="0" />
+      <RootComponent type="29" id="{cc2ea661-2c58-f011-bec1-0022481d6b21}" behavior="0" />
+      <RootComponent type="29" id="{cd2ea661-2c58-f011-bec1-0022481d6b21}" behavior="0" />
+      <RootComponent type="29" id="{ce2ea661-2c58-f011-bec1-0022481d6b21}" behavior="0" />
+      <RootComponent type="29" id="{d57d6b46-c7a3-f011-bbd3-7c1e52168a08}" behavior="0" />
+      <RootComponent type="29" id="{d67caca3-996c-f011-bec2-6045bdec9745}" behavior="0" />
+      <RootComponent type="29" id="{e51e4810-157e-f011-b4cc-6045bdec9745}" behavior="0" />
+      <RootComponent type="29" id="{fbabd223-6662-f011-bec1-0022481d6b21}" behavior="0" />
+      <RootComponent type="29" id="{fe4367ba-703d-f011-b4cc-7c1e5281f9ed}" behavior="0" />
+      <RootComponent type="29" id="{ff4367ba-703d-f011-b4cc-7c1e5281f9ed}" behavior="0" />
+      <RootComponent type="61" schemaName="cr49f_filterSubgridBasedOnSALookup" behavior="0" />
+      <RootComponent type="61" schemaName="cr49f_hidesubgrid" behavior="0" />
+      <RootComponent type="62" schemaName="cr6b0_ProjectTrackerModelDrivenApp" behavior="0" />
+      <RootComponent type="62" schemaName="cr6b0_PSAPOC" behavior="0" />
+      <RootComponent type="80" schemaName="cr6b0_ProjectTrackerModelDrivenApp" behavior="0" />
+      <RootComponent type="80" schemaName="cr6b0_PSAPOC" behavior="0" />
+      <RootComponent type="300" schemaName="cr49f_starsnextant_44ec6" behavior="0" />
+      <RootComponent type="300" schemaName="cr49f_timenextantv2_435a1" behavior="0" />
+      <RootComponent type="300" schemaName="cr6b0_deliveryassessmentca_f54e1" behavior="0" />
+      <RootComponent type="300" schemaName="cr6b0_plcalculation_29bd2" behavior="0" />
+      <RootComponent type="300" schemaName="cr6b0_projectpricingapp_60712" behavior="0" />
+      <RootComponent type="300" schemaName="cr6b0_projectresourcingapp_1beca" behavior="0" />
+      <RootComponent type="300" schemaName="cr6b0_psapocdefaultcommandlibrary_1603e" behavior="0" />
+    </RootComponents>
+    <MissingDependencies>
+      <MissingDependency>
+        <Required type="61" schemaName="msdyn_/Images/AppModule_Default_Icon.png" displayName="msdyn_/Images/AppModule_Default_Icon.png" solution="AppModuleWebResources (2.5)">
+          <package appName="AppModule Web Resources Package" version="2.5">AppModuleWebResources (2.5)</package>
+        </Required>
+        <Dependent type="80" schemaName="cr6b0_ProjectTrackerModelDrivenApp" displayName="Project Tracker" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="61" schemaName="msdyn_/Images/AppModule_Default_Icon.png" displayName="msdyn_/Images/AppModule_Default_Icon.png" solution="AppModuleWebResources (2.5)">
+          <package appName="AppModule Web Resources Package" version="2.5">AppModuleWebResources (2.5)</package>
+        </Required>
+        <Dependent type="80" schemaName="cr6b0_PSAPOC" displayName="Project Hub" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="66" schemaName="MscrmControls.Canvas.CanvasControl" displayName="MscrmControls.Canvas.CanvasControl" solution="BaseCustomControlsCore (9.0.2512.3008)">
+          <package appName="Base Custom Controls" version="9.0.2512.3008">BaseCustomControlsCore (9.0.2512.3008)</package>
+        </Required>
+        <Dependent type="60" displayName="Project Tracker Information" parentDisplayName="Project" id="{9b9b5801-c145-f011-877a-7c1e5281f9ed}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="66" schemaName="MscrmControls.Canvas.CanvasControl" displayName="MscrmControls.Canvas.CanvasControl" solution="BaseCustomControlsCore (9.0.2512.3008)">
+          <package appName="Base Custom Controls" version="9.0.2512.3008">BaseCustomControlsCore (9.0.2512.3008)</package>
+        </Required>
+        <Dependent type="60" displayName="Information" parentDisplayName="Project" id="{c0cf42d5-3105-4205-9a2c-209fb583a907}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="66" schemaName="MscrmControls.Grid.GridControl" displayName="MscrmControls.Grid.GridControl" solution="BaseCustomControlsCore (9.0.2512.3008)">
+          <package appName="Base Custom Controls" version="9.0.2512.3008">BaseCustomControlsCore (9.0.2512.3008)</package>
+        </Required>
+        <Dependent type="60" displayName="Project Tracker Information" parentDisplayName="Project" id="{9b9b5801-c145-f011-877a-7c1e5281f9ed}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="66" schemaName="MscrmControls.Grid.GridControl" displayName="MscrmControls.Grid.GridControl" solution="BaseCustomControlsCore (9.0.2512.3008)">
+          <package appName="Base Custom Controls" version="9.0.2512.3008">BaseCustomControlsCore (9.0.2512.3008)</package>
+        </Required>
+        <Dependent type="60" displayName="Information" parentDisplayName="Project" id="{c0cf42d5-3105-4205-9a2c-209fb583a907}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="66" schemaName="MscrmControls.Grid.GridControl" displayName="MscrmControls.Grid.GridControl" solution="BaseCustomControlsCore (9.0.2512.3008)">
+          <package appName="Base Custom Controls" version="9.0.2512.3008">BaseCustomControlsCore (9.0.2512.3008)</package>
+        </Required>
+        <Dependent type="68" id="{60c0d749-9ac2-48be-bd7b-407b2c8c2e56}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="66" schemaName="mv_UniversalGanttGridComponent.UniversalGanttChartComponent" displayName="mv_UniversalGanttGridComponent.UniversalGanttChartComponent" solution="UniversalGanttChartSolution (1.5)" />
+        <Dependent type="60" displayName="Information" parentDisplayName="Project" id="{c0cf42d5-3105-4205-9a2c-209fb583a907}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="SettingDefinition" displayName="AppChannel" solution="msdyn_AppFrameworkInfraExtensions (1.0.0.15)" id.uniquename="AppChannel">
+          <package appName="PowerAppsAppFramework Package" version="1.0.0.23">PowerAppsAppFramework_Anchor (1.0.0.23)</package>
+        </Required>
+        <Dependent type="AppSetting" displayName="parentappmoduleid.uniquename=cr6b0_ProjectTrackerModelDrivenApp,settingdefinitionid.uniquename=AppChannel" id.parentappmoduleid.uniquename="cr6b0_ProjectTrackerModelDrivenApp" id.settingdefinitionid.uniquename="AppChannel" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="SettingDefinition" displayName="AppChannel" solution="msdyn_AppFrameworkInfraExtensions (1.0.0.15)" id.uniquename="AppChannel">
+          <package appName="PowerAppsAppFramework Package" version="1.0.0.23">PowerAppsAppFramework_Anchor (1.0.0.23)</package>
+        </Required>
+        <Dependent type="AppSetting" displayName="parentappmoduleid.uniquename=cr6b0_PSAPOC,settingdefinitionid.uniquename=AppChannel" id.parentappmoduleid.uniquename="cr6b0_PSAPOC" id.settingdefinitionid.uniquename="AppChannel" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="SettingDefinition" displayName="IsSmartEmailAddressValidationControlEnabled" solution="msdyn_EmailAddressValidation (1.0.0.4)" id.uniquename="IsSmartEmailAddressValidationControlEnabled">
+          <package appName="DataValidationApp Package" version="1.0.0.4">DataValidationApp_Anchor (1.0.0.4)</package>
+        </Required>
+        <Dependent type="AppSetting" displayName="parentappmoduleid.uniquename=cr6b0_ProjectTrackerModelDrivenApp,settingdefinitionid.uniquename=IsSmartEmailAddressValidationControlEnabled" id.parentappmoduleid.uniquename="cr6b0_ProjectTrackerModelDrivenApp" id.settingdefinitionid.uniquename="IsSmartEmailAddressValidationControlEnabled" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="SettingDefinition" displayName="msdyn_TimelineModernization" solution="msdyn_TimelineExtended (1.25121.6.6121)" id.uniquename="msdyn_TimelineModernization">
+          <package appName="msdyn_CustomControlsExtended" version="1.25121.6.6121">msdyn_TimelineExtended (1.25121.6.6121)</package>
+        </Required>
+        <Dependent type="AppSetting" displayName="parentappmoduleid.uniquename=cr6b0_ProjectTrackerModelDrivenApp,settingdefinitionid.uniquename=msdyn_TimelineModernization" id.parentappmoduleid.uniquename="cr6b0_ProjectTrackerModelDrivenApp" id.settingdefinitionid.uniquename="msdyn_TimelineModernization" />
+      </MissingDependency>
+    </MissingDependencies>
+  </SolutionManifest>
+</ImportExportXml>
