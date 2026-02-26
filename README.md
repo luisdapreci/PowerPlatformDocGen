@@ -74,10 +74,18 @@ The Power Platform Documentation Generator is a web-based application that lever
 - **Wizard Workflow**: Step-by-step process for uploading, selecting components, and generating docs
 - **Real-Time Progress**: WebSocket-based live updates during analysis
 - **Interactive Chat**: Ask questions about your solution components
+- **Markdown to PDF Converter**: Standalone tool to convert markdown files to professionally formatted PDFs
 
 ### 🔧 Advanced Capabilities
 - **Component Selection**: Choose specific apps or flows to document
 - **Multiple Export Formats**: Download as Markdown or PDF
+- **Markdown to PDF Conversion**: Upload any markdown file and convert to styled PDF with:
+  - Automatic table of contents
+  - Syntax highlighting for 100+ languages
+  - Professional styling and branding
+  - Admonition boxes (note, warning, tip)
+  - Page numbering (customizable format and position)
+  - Custom CSS support
 - **Session Management**: Maintain multiple concurrent analysis sessions
 - **Auto Cleanup**: Automatic session expiration and temporary file cleanup
 
@@ -460,6 +468,34 @@ In Power Platform:
   - "Explain the approval workflow logic"
   - "List all Power Fx formulas in the Inventory app"
 
+### Markdown to PDF Converter
+
+The application includes a standalone markdown-to-PDF converter accessible from the main interface:
+
+#### 1. Select Converter Mode
+
+- Open the web interface at `http://localhost:8000`
+- Choose **Convert Markdown to PDF** from the mode selector
+
+#### 2. Upload Markdown File
+
+- Drag and drop your `.md` file or click to browse
+- Maximum file size: 10MB
+- Supports UTF-8 encoded markdown files
+
+#### 3. Convert and Download
+
+- Click **Convert to PDF**
+- The PDF will be automatically downloaded with professional styling including:
+  - Automatic table of contents
+  - Syntax highlighting for code blocks
+  - Styled admonition boxes (note, warning, tip, danger)
+  - Professional tables
+  - Page numbering
+  - Custom branding (configurable in `src/config.py`)
+
+**Example:** A sample markdown file is provided at `tests/sample_markdown_for_pdf.md` for testing.
+
 ### API Usage
 
 You can also interact with the API directly:
@@ -488,6 +524,17 @@ response = requests.post(
         'business_context': 'This is a sales tracking application'
     }
 )
+
+# Convert markdown to PDF
+with open('documentation.md', 'rb') as f:
+    response = requests.post(
+        'http://localhost:8000/convert-markdown-to-pdf',
+        files={'file': f}
+    )
+    
+    # Save the PDF
+    with open('documentation.pdf', 'wb') as pdf:
+        pdf.write(response.content)
 ```
 
 ---

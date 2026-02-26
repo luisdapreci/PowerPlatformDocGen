@@ -1303,6 +1303,75 @@ async def download_pdf(session_id: str, filename: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/convert-markdown-to-pdf")
+async def convert_markdown_to_pdf(file: UploadFile = File(...)):
+    """
+    Convert an uploaded markdown file to PDF (standalone feature)
+    """
+    try:
+        # Validate file
+        if not file.filename.endswith('.md'):
+            raise HTTPException(status_code=400, detail="Only markdown (.md) files are supported")
+        
+        # Check file size (max 10MB for standalone markdown files)
+        file_content = await file.read()
+        if len(file_content) > 10 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+        
+        # Decode markdown content
+        try:
+            markdown_content = file_content.decode('utf-8')
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid UTF-8 encoding in file")
+        
+        # Generate a temporary session ID for this conversion
+        conversion_id = generate_session_id()
+        conversion_dir = config.TEMP_DIR / "conversions" / conversion_id
+        conversion_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate PDF filename from markdown filename
+        pdf_filename = file.filename[:-3] + '.pdf' if file.filename.endswith('.md') else file.filename + '.pdf'
+        pdf_path = conversion_dir / pdf_filename
+        
+        # Convert to PDF
+        result = render_markdown_to_pdf(
+            markdown_content=markdown_content,
+            output_path=str(pdf_path),
+            config=config.PDF_CONFIG
+        )
+        
+        if result['status'] != 'success':
+            logger.error(f"PDF conversion failed: {result.get('error', 'Unknown error')}")
+            # Cleanup
+            shutil.rmtree(conversion_dir, ignore_errors=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"PDF conversion failed: {result.get('error', 'Unknown error')}"
+            )
+        
+        # Return the PDF
+        response = FileResponse(
+            path=pdf_path,
+            filename=pdf_filename,
+            media_type='application/pdf'
+        )
+        
+        # Schedule cleanup after response is sent (do it in background)
+        async def cleanup():
+            await asyncio.sleep(5)  # Wait 5 seconds to ensure download completes
+            shutil.rmtree(conversion_dir, ignore_errors=True)
+        
+        asyncio.create_task(cleanup())
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error converting markdown to PDF")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/doc-progress/{session_id}")
 async def get_documentation_progress(session_id: str):
     """

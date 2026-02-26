@@ -680,6 +680,204 @@
             background: #667eea;
             color: white;
         }
+
+        /* Mode Selector Styles */
+        .mode-selector {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .mode-selector h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+
+        .mode-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .mode-btn {
+            flex: 1;
+            min-width: 250px;
+            max-width: 350px;
+            padding: 30px 20px;
+            background: white;
+            border: 3px solid #e0e0e0;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+        }
+
+        .mode-btn:hover {
+            border-color: #667eea;
+            transform: translateY(-5px);
+            box-shadow: 0 6px 12px rgba(102, 126, 234, 0.2);
+        }
+
+        .mode-btn.active {
+            border-color: #667eea;
+            background: #eef0ff;
+        }
+
+        .mode-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+        }
+
+        .mode-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .mode-description {
+            color: #666;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        /* Markdown Converter Styles */
+        .markdown-converter {
+            display: none;
+        }
+
+        .markdown-converter.active {
+            display: block;
+        }
+
+        .converter-upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 10px;
+            padding: 60px 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #f8f9ff;
+            margin: 30px 0;
+        }
+
+        .converter-upload-area:hover {
+            background: #eef0ff;
+            border-color: #5568d3;
+        }
+
+        .converter-upload-area.dragging {
+            background: #e0e7ff;
+            border-color: #5568d3;
+        }
+
+        .converter-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+
+        .converter-text {
+            font-size: 1.3rem;
+            color: #333;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+
+        .converter-hint {
+            color: #666;
+            font-size: 0.95rem;
+        }
+
+        .converter-file-info {
+            display: none;
+            background: #e0e7ff;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: left;
+        }
+
+        .converter-file-info.show {
+            display: block;
+        }
+
+        .file-info-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            padding: 8px 0;
+            border-bottom: 1px solid #c5d0ff;
+        }
+
+        .file-info-item:last-child {
+            border-bottom: none;
+        }
+
+        .file-info-label {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .file-info-value {
+            color: #666;
+        }
+
+        .convert-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+            display: none;
+        }
+
+        .convert-btn.show {
+            display: inline-block;
+        }
+
+        .convert-btn:hover:not(:disabled) {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .convert-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .back-to-modes {
+            background: #e0e0e0;
+            color: #333;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+            margin-bottom: 20px;
+        }
+
+        .back-to-modes:hover {
+            background: #d0d0d0;
+        }
+
+        /* Solution Wizard Container */
+        .solution-wizard {
+            display: none;
+        }
+
+        .solution-wizard.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -689,7 +887,63 @@
             <p class="subtitle">Create comprehensive documentation for your Power Platform solutions</p>
         </header>
 
-        <div class="wizard-container">
+        <!-- Mode Selector -->
+        <div class="mode-selector" id="modeSelector">
+            <h2>Choose Your Task</h2>
+            <div class="mode-buttons">
+                <div class="mode-btn" onclick="selectMode('solution')">
+                    <div class="mode-icon">📦</div>
+                    <div class="mode-title">Document Power Platform Solution</div>
+                    <div class="mode-description">Upload a solution ZIP file and generate comprehensive AI-powered documentation</div>
+                </div>
+                <div class="mode-btn" onclick="selectMode('markdown')">
+                    <div class="mode-icon">📄</div>
+                    <div class="mode-title">Convert Markdown to PDF</div>
+                    <div class="mode-description">Upload a markdown file and convert it to a professionally formatted PDF</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Markdown to PDF Converter -->
+        <div class="markdown-converter" id="markdownConverter">
+            <button class="back-to-modes" onclick="backToModes()">← Back to Mode Selection</button>
+            
+            <h2>Convert Markdown to PDF</h2>
+            <p style="color: #666; margin: 20px 0;">Upload a markdown (.md) file to convert it to a professionally formatted PDF</p>
+
+            <div class="converter-upload-area" id="converterUploadArea">
+                <div class="converter-icon">📄</div>
+                <div class="converter-text">Drag & Drop your markdown file here</div>
+                <div class="converter-hint">or click to browse (Max 10MB, .md files only)</div>
+                <input type="file" id="converterFileInput" accept=".md" style="display: none;">
+            </div>
+
+            <div class="converter-file-info" id="converterFileInfo">
+                <div class="file-info-item">
+                    <span class="file-info-label">File Name:</span>
+                    <span class="file-info-value" id="converterFileName">-</span>
+                </div>
+                <div class="file-info-item">
+                    <span class="file-info-label">File Size:</span>
+                    <span class="file-info-value" id="converterFileSize">-</span>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <button class="convert-btn" id="convertBtn" onclick="convertMarkdownToPdf()">
+                    🎨 Convert to PDF
+                </button>
+            </div>
+
+            <div class="status" id="converterStatus"></div>
+            <div class="loading-spinner" id="converterSpinner"></div>
+        </div>
+
+        <!-- Power Platform Solution Wizard -->
+        <div class="solution-wizard" id="solutionWizard">
+            <button class="back-to-modes" onclick="backToModes()">← Back to Mode Selection</button>
+
+            <div class="wizard-container">
             <!-- Step Indicator -->
             <div class="step-indicator">
                 <div class="step-item active" data-step="1">
@@ -856,6 +1110,7 @@
             </div>
         </div>
     </div>
+    </div> <!-- End solution-wizard -->
 
     <script>
         let currentStep = 1;
@@ -863,6 +1118,156 @@
         let components = [];
         let selectedComponents = [];
         let generatedFiles = [];
+        let converterFile = null;
+
+        // Mode Selection
+        function selectMode(mode) {
+            const modeSelector = document.getElementById('modeSelector');
+            const solutionWizard = document.getElementById('solutionWizard');
+            const markdownConverter = document.getElementById('markdownConverter');
+
+            modeSelector.style.display = 'none';
+
+            if (mode === 'solution') {
+                solutionWizard.classList.add('active');
+                markdownConverter.classList.remove('active');
+            } else if (mode === 'markdown') {
+                markdownConverter.classList.add('active');
+                solutionWizard.classList.remove('active');
+            }
+        }
+
+        function backToModes() {
+            const modeSelector = document.getElementById('modeSelector');
+            const solutionWizard = document.getElementById('solutionWizard');
+            const markdownConverter = document.getElementById('markdownConverter');
+
+            // Reset converter state
+            converterFile = null;
+            document.getElementById('converterFileInfo').classList.remove('show');
+            document.getElementById('convertBtn').classList.remove('show');
+            document.getElementById('converterStatus').className = 'status';
+            document.getElementById('converterStatus').textContent = '';
+
+            // Show mode selector
+            modeSelector.style.display = 'block';
+            solutionWizard.classList.remove('active');
+            markdownConverter.classList.remove('active');
+        }
+
+        // Markdown to PDF Converter
+        const converterUploadArea = document.getElementById('converterUploadArea');
+        const converterFileInput = document.getElementById('converterFileInput');
+        const converterFileInfo = document.getElementById('converterFileInfo');
+        const converterFileName = document.getElementById('converterFileName');
+        const converterFileSize = document.getElementById('converterFileSize');
+        const convertBtn = document.getElementById('convertBtn');
+        const converterStatus = document.getElementById('converterStatus');
+        const converterSpinner = document.getElementById('converterSpinner');
+
+        converterUploadArea.addEventListener('click', () => converterFileInput.click());
+
+        converterUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            converterUploadArea.classList.add('dragging');
+        });
+
+        converterUploadArea.addEventListener('dragleave', () => {
+            converterUploadArea.classList.remove('dragging');
+        });
+
+        converterUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            converterUploadArea.classList.remove('dragging');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleConverterFileSelect(files[0]);
+            }
+        });
+
+        converterFileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleConverterFileSelect(e.target.files[0]);
+            }
+        });
+
+        function handleConverterFileSelect(file) {
+            // Validate file type
+            if (!file.name.endsWith('.md')) {
+                converterStatus.className = 'status error';
+                converterStatus.textContent = '❌ Only markdown (.md) files are supported';
+                return;
+            }
+
+            // Validate file size (10MB max)
+            if (file.size > 10 * 1024 * 1024) {
+                converterStatus.className = 'status error';
+                converterStatus.textContent = '❌ File too large (max 10MB)';
+                return;
+            }
+
+            // Store file and show info
+            converterFile = file;
+            converterFileName.textContent = file.name;
+            converterFileSize.textContent = formatFileSize(file.size);
+            converterFileInfo.classList.add('show');
+            convertBtn.classList.add('show');
+            converterStatus.className = 'status success';
+            converterStatus.textContent = '✅ File ready for conversion';
+        }
+
+        async function convertMarkdownToPdf() {
+            if (!converterFile) {
+                return;
+            }
+
+            convertBtn.disabled = true;
+            converterStatus.className = 'status info';
+            converterStatus.textContent = '🔄 Converting markdown to PDF...';
+            converterSpinner.style.display = 'block';
+
+            try {
+                const formData = new FormData();
+                formData.append('file', converterFile);
+
+                const response = await fetch('/convert-markdown-to-pdf', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Conversion failed');
+                }
+
+                // Download the PDF
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = converterFile.name.replace('.md', '.pdf');
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+
+                converterStatus.className = 'status success';
+                converterStatus.textContent = '✅ PDF downloaded successfully!';
+            } catch (error) {
+                console.error('Conversion error:', error);
+                converterStatus.className = 'status error';
+                converterStatus.textContent = `❌ ${error.message}`;
+            } finally {
+                convertBtn.disabled = false;
+                converterSpinner.style.display = 'none';
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
 
         // Step navigation
         function goToStep(step) {
