@@ -89,7 +89,7 @@ PDF_CONFIG = {
     'page_size': 'A4',  # Options: A4, Letter, Legal
     
     # Feature Toggles
-    'enable_toc': True,  # Generate table of contents
+    'enable_toc': False,  # Generate table of contents
     'enable_page_numbers': True,  # Show page numbers in footer
     
     # Page Numbering
