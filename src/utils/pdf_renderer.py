@@ -1,7 +1,93 @@
 """PDF rendering utility for converting markdown documentation to branded PDFs"""
 import os
+import re
 from pathlib import Path
 from typing import Optional, Dict, Any
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+
+def validate_pdf_config(config: Optional[Dict]) -> Dict[str, Any]:
+    """
+    Validate and sanitize PDF configuration.
+    Returns a validated config dict with defaults filled in.
+    """
+    if config is None:
+        config = {}
+    
+    validated = {}
+    
+    # Color validation (hex format)
+    def validate_color(color: str, default: str) -> str:
+        if not color:
+            return default
+        # Check if it's a valid hex color
+        if re.match(r'^#[0-9A-Fa-f]{6}$', color):
+            return color
+        logger.warning(f"Invalid color format: {color}, using default: {default}")
+        return default
+    
+    validated['primary_color'] = validate_color(config.get('primary_color', '#2c3e50'), '#2c3e50')
+    validated['secondary_color'] = validate_color(config.get('secondary_color', '#34495e'), '#34495e')
+    validated['accent_color'] = validate_color(config.get('accent_color', '#3498db'), '#3498db')
+    
+    # Text fields
+    validated['company_name'] = config.get('company_name', 'Power Platform Documentation')[-100:]  # Limit length
+    validated['footer_text'] = config.get('footer_text', 'Generated Documentation')[-100:]
+    
+    # Page size validation
+    valid_page_sizes = ['A4', 'LETTER', 'LEGAL']
+    page_size = config.get('page_size', 'A4').upper()
+    validated['page_size'] = page_size if page_size in valid_page_sizes else 'A4'
+    
+    # Logo path validation
+    logo_path = config.get('logo_path', None)
+    if logo_path:
+        if not os.path.isabs(logo_path):
+            # Make relative to project root
+            project_root = Path(__file__).parent.parent.parent
+            logo_path = str(project_root / logo_path)
+        
+        if os.path.exists(logo_path):
+            # Check file size (max 5MB)
+            file_size = os.path.getsize(logo_path)
+            if file_size > 5 * 1024 * 1024:
+                logger.warning(f"Logo file too large ({file_size} bytes), skipping")
+                validated['logo_path'] = None
+            else:
+                validated['logo_path'] = logo_path
+        else:
+            logger.warning(f"Logo file not found: {logo_path}")
+            validated['logo_path'] = None
+    else:
+        validated['logo_path'] = None
+    
+    # Boolean flags
+    validated['enable_toc'] = bool(config.get('enable_toc', True))
+    validated['enable_page_numbers'] = bool(config.get('enable_page_numbers', True))
+    
+    # Page numbering format
+    page_number_format = config.get('page_number_format', 'Page {page} of {total}')
+    validated['page_number_format'] = str(page_number_format)[:50]  # Limit length
+    
+    # Page number position
+    valid_positions = ['bottom-center', 'bottom-right', 'bottom-left']
+    position = config.get('page_number_position', 'bottom-center')
+    validated['page_number_position'] = position if position in valid_positions else 'bottom-center'
+    
+    # Custom CSS (sanitize potential security issues)
+    custom_css = config.get('custom_css', '')
+    if custom_css:
+        # Basic sanitization - remove script tags and javascript
+        custom_css = re.sub(r'<script[^>]*>.*?</script>', '', custom_css, flags=re.DOTALL | re.IGNORECASE)
+        custom_css = re.sub(r'javascript:', '', custom_css, flags=re.IGNORECASE)
+        validated['custom_css'] = custom_css[:5000]  # Limit size
+    else:
+        validated['custom_css'] = ''
+    
+    return validated
 
 
 def render_markdown_to_pdf(
@@ -10,10 +96,7 @@ def render_markdown_to_pdf(
     config: Optional[Dict] = None
 ) -> Dict[str, Any]:
     """
-    Convert markdown content to a branded PDF document.
-    
-    Uses WeasyPrint if available (requires GTK on Windows).
-    Falls back to xhtml2pdf for Windows compatibility.
+    Convert markdown content to a branded PDF document using xhtml2pdf.
     
     Args:
         markdown_content: The markdown text to convert
@@ -26,133 +109,155 @@ def render_markdown_to_pdf(
             - logo_path: Path to company logo image (optional)
             - footer_text: Custom footer text (optional)
             - page_size: Page size (default: "A4")
+            - custom_css: Additional CSS styles to inject
+            - enable_toc: Generate table of contents (default: True)
+            - theme: Color theme preset (default: "default")
             
     Returns:
         Dict with status, file_path, and optional error message
     """
-    # First try WeasyPrint (best quality), then fall back to xhtml2pdf (Windows compatible)
-    try:
-        return _render_with_weasyprint(markdown_content, output_path, config)
-    except Exception as weasy_error:
-        try:
-            return _render_with_xhtml2pdf(markdown_content, output_path, config)
-        except Exception as xhtml_error:
-            return {
-                'status': 'error',
-                'error': f'PDF generation failed. WeasyPrint error: {str(weasy_error)}. xhtml2pdf error: {str(xhtml_error)}'
-            }
-
-
-def _render_with_weasyprint(
-    markdown_content: str,
-    output_path: str,
-    config: Optional[Dict] = None
-) -> Dict[str, Any]:
-    """Render PDF using WeasyPrint (requires GTK libraries)"""
-    try:
-        import markdown
-        from weasyprint import HTML
-        from weasyprint.text.fonts import FontConfiguration
-        
-        # Use default config if none provided
-        if config is None:
-            config = {}
-        
-        # Get configuration values with defaults
-        primary_color = config.get('primary_color', '#2c3e50')
-        secondary_color = config.get('secondary_color', '#34495e')
-        accent_color = config.get('accent_color', '#3498db')
-        company_name = config.get('company_name', 'Power Platform Documentation')
-        footer_text = config.get('footer_text', 'Generated Documentation')
-        logo_path = config.get('logo_path', None)
-        page_size = config.get('page_size', 'A4')
-        
-        # Convert markdown to HTML with extensions
-        md = markdown.Markdown(extensions=[
-            'extra',  # Includes tables, fenced_code, etc.
-            'codehilite',  # Syntax highlighting
-            'toc',  # Table of contents
-            'nl2br',  # Newline to break
-            'sane_lists'  # Better list handling
-        ])
-        html_content = md.convert(markdown_content)
-        
-        # Load HTML template
-        template_path = Path(__file__).parent.parent.parent / "templates" / "pdf_template.html"
-        
-        if not template_path.exists():
-            return {
-                'status': 'error',
-                'error': f'PDF template not found at {template_path}'
-            }
-        
-        with open(template_path, 'r', encoding='utf-8') as f:
-            html_template = f.read()
-        
-        # Prepare logo HTML if logo path provided
-        logo_html = ''
-        if logo_path:
-            # Resolve relative paths from project root
-            if not os.path.isabs(logo_path):
-                from pathlib import Path
-                project_root = Path(__file__).parent.parent.parent
-                logo_path = str(project_root / logo_path)
-            
-            if os.path.exists(logo_path):
-                # Convert image to base64 data URI for better compatibility
-                import base64
-                try:
-                    with open(logo_path, 'rb') as img_file:
-                        img_data = base64.b64encode(img_file.read()).decode('utf-8')
-                        # Detect image type from extension
-                        ext = os.path.splitext(logo_path)[1].lower()
-                        mime_type = {
-                            '.png': 'image/png',
-                            '.jpg': 'image/jpeg',
-                            '.jpeg': 'image/jpeg',
-                            '.gif': 'image/gif',
-                            '.svg': 'image/svg+xml'
-                        }.get(ext, 'image/png')
-                        
-                        logo_html = f'<img src="data:{mime_type};base64,{img_data}" alt="Logo" class="logo">'
-                except Exception:
-                    # If image loading fails, just skip the logo
-                    pass
-        
-        # Replace placeholders in template
-        html_document = html_template.replace('{markdown_content}', html_content)
-        html_document = html_document.replace('{primary_color}', primary_color)
-        html_document = html_document.replace('{secondary_color}', secondary_color)
-        html_document = html_document.replace('{accent_color}', accent_color)
-        html_document = html_document.replace('{company_name}', company_name)
-        html_document = html_document.replace('{footer_text}', footer_text)
-        html_document = html_document.replace('{logo_html}', logo_html)
-        html_document = html_document.replace('{page_size}', page_size.upper())
-        
-        # Generate timestamp
-        from datetime import datetime
-        generation_date = datetime.now().strftime('%B %d, %Y')
-        html_document = html_document.replace('{generation_date}', generation_date)
-        
-        # Configure fonts for WeasyPrint
-        font_config = FontConfiguration()
-        
-        # Create PDF from HTML
-        html_obj = HTML(string=html_document, base_url=str(template_path.parent))
-        html_obj.write_pdf(
-            output_path,
-            font_config=font_config
-        )
-        
+    # Validate inputs
+    if not markdown_content or not markdown_content.strip():
         return {
-            'status': 'success',
-            'file_path': output_path,
-            'size_bytes': os.path.getsize(output_path) if os.path.exists(output_path) else 0,
-            'renderer': 'weasyprint'
+            'status': 'error',
+            'error': 'Markdown content is empty or invalid'
         }
-        
+    
+    if not output_path:
+        return {
+            'status': 'error',
+            'error': 'Output path is required'
+        }
+    
+    # Ensure output directory exists
+    output_dir = Path(output_path).parent
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
     except Exception as e:
-        raise Exception(f'WeasyPrint rendering failed: {str(e)}')
+        return {
+            'status': 'error',
+            'error': f'Failed to create output directory: {str(e)}'
+        }
+    
+    # Validate and sanitize configuration
+    try:
+        config = validate_pdf_config(config)
+    except Exception as e:
+        logger.error(f"Config validation error: {str(e)}")
+        return {
+            'status': 'error',
+            'error': f'Invalid configuration: {str(e)}'
+        }
+    
+    # Render PDF using xhtml2pdf
+    try:
+        return _render_with_xhtml2pdf(markdown_content, output_path, config)
+    except Exception as e:
+        logger.error(f"PDF generation failed: {str(e)}")
+        return {
+            'status': 'error',
+            'error': f'PDF generation failed: {str(e)}'
+        }
+
+
+def _process_images_in_markdown(markdown_content: str, base_path: Optional[Path] = None) -> str:
+    """
+    Process images in markdown to optimize for PDF rendering.
+    Converts relative paths to absolute and handles image sizing.
+    """
+    if base_path is None:
+        base_path = Path.cwd()
+    
+    # Pattern to match markdown images: ![alt](path)
+    img_pattern = r'!\[([^\]]*)\]\(([^\)]+)\)'
+    
+    def replace_image(match):
+        alt_text = match.group(1)
+        img_path = match.group(2)
+        
+        # Skip if it's already a URL
+        if img_path.startswith(('http://', 'https://', 'data:')):
+            return match.group(0)
+        
+        # Convert relative path to absolute
+        abs_path = base_path / img_path
+        if abs_path.exists():
+            return f'![{alt_text}](file:///{abs_path.as_posix()})'
+        
+        return match.group(0)
+    
+    return re.sub(img_pattern, replace_image, markdown_content)
+
+
+def _generate_toc_from_html(html_content: str) -> str:
+    """
+    Generate a table of contents from HTML headings.
+    Returns HTML for the TOC.
+    """
+    # Parse headings from HTML
+    heading_pattern = r'<h([1-6])[^>]*>(.*?)</h\1>'
+    headings = re.findall(heading_pattern, html_content, re.IGNORECASE | re.DOTALL)
+    
+    if not headings:
+        return ""
+    
+    toc_html = ['<div class="table-of-contents">', '<h2>Table of Contents</h2>', '<ul class="toc-list">']
+    
+    for level, title in headings:
+        # Remove HTML tags from title
+        clean_title = re.sub(r'<[^>]+>', '', title).strip()
+        if not clean_title:
+            continue
+        
+        # Create a slug for the heading
+        slug = re.sub(r'[^\w\s-]', '', clean_title.lower())
+        slug = re.sub(r'[-\s]+', '-', slug)
+        
+        indent_class = f'toc-level-{level}'
+        toc_html.append(f'  <li class="{indent_class}"><a href="#{slug}">{clean_title}</a></li>')
+    
+    toc_html.append('</ul>')
+    toc_html.append('</div>')
+    toc_html.append('<div class="page-break"></div>')
+    
+    return '\n'.join(toc_html)
+
+
+def _add_heading_ids(html_content: str) -> str:
+    """
+    Add ID attributes to headings for TOC linking.
+    """
+    def add_id(match):
+        level = match.group(1)
+        attrs = match.group(2) or ''
+        title = match.group(3)
+        
+        # Skip if already has an ID
+        if 'id=' in attrs:
+            return match.group(0)
+        
+        # Generate ID from title
+        clean_title = re.sub(r'<[^>]+>', '', title).strip()
+        slug = re.sub(r'[^\w\s-]', '', clean_title.lower())
+        slug = re.sub(r'[-\s]+', '-', slug)
+        
+        return f'<h{level} id="{slug}"{attrs}>{title}</h{level}>'
+    
+    pattern = r'<h([1-6])([^>]*)>(.*?)</h\1>'
+    return re.sub(pattern, add_id, html_content, flags=re.IGNORECASE | re.DOTALL)
+
+
+def _get_syntax_highlighting_css() -> str:
+    """
+    Get CSS for syntax highlighting using Pygments.
+    """
+    try:
+        from pygments.formatters import HtmlFormatter
+        formatter = HtmlFormatter(style='friendly')
+        return formatter.get_style_defs('.codehilite')
+    except ImportError:
+        # Fallback if pygments not available
+        return ""
 
 
 def _render_with_xhtml2pdf(
@@ -200,6 +305,15 @@ def _render_with_xhtml2pdf(
         company_name = config.get('company_name', 'Power Platform Documentation')
         footer_text = config.get('footer_text', 'Generated Documentation')
         logo_path = config.get('logo_path', None)
+        custom_css = config.get('custom_css', '')
+        enable_toc = config.get('enable_toc', True)
+        enable_page_numbers = config.get('enable_page_numbers', True)
+        page_number_format = config.get('page_number_format', 'Page {page} of {total}')
+        page_number_position = config.get('page_number_position', 'bottom-center')
+        
+        # Process images in markdown
+        base_path = Path(output_path).parent
+        markdown_content = _process_images_in_markdown(markdown_content, base_path)
         
         # Prepare logo HTML if logo path provided
         logo_html = ''
@@ -250,15 +364,153 @@ def _render_with_xhtml2pdf(
             'codehilite',
             'toc',
             'nl2br',
-            'sane_lists'
-        ])
+            'sane_lists',
+            'admonition',
+            'attr_list',
+            'def_list',
+            'footnotes',
+            'md_in_html',
+            'tables',
+        ], extension_configs={
+            'codehilite': {
+                'css_class': 'codehilite',
+            }
+        })
         html_content = md.convert(markdown_content)
+        
+        # Add IDs to headings
+        html_content = _add_heading_ids(html_content)
+        
+        # Generate table of contents if enabled
+        toc_html = ''
+        if enable_toc:
+            toc_html = _generate_toc_from_html(html_content)
+        
+        # Inject TOC before main content
+        content_with_toc = f'{toc_html}\n{html_content}'
         
         # Generate timestamp
         from datetime import datetime
         generation_date = datetime.now().strftime('%B %d, %Y')
         
         # Create simplified HTML for xhtml2pdf (doesn't support all CSS)
+        # Add TOC styles
+        toc_styles = '''
+        .table-of-contents {
+            page-break-after: always;
+            margin-bottom: 20pt;
+            padding: 15pt;
+            border: 1px solid #ddd;
+            background-color: #f9f9f9;
+        }
+        
+        .table-of-contents h2 {
+            color: ''' + primary_color + ''';
+            margin-top: 0;
+            margin-bottom: 15pt;
+            border-left: none;
+            padding-left: 0;
+        }
+        
+        .toc-list {
+            list-style: none;
+            padding-left: 0;
+        }
+        
+        .toc-list li {
+            margin-bottom: 6pt;
+        }
+        
+        .toc-list a {
+            text-decoration: none;
+            color: #333;
+        }
+        
+        .toc-level-1 {
+            font-weight: bold;
+            font-size: 11pt;
+            margin-top: 8pt;
+        }
+        
+        .toc-level-2 {
+            padding-left: 15pt;
+            font-size: 10pt;
+        }
+        
+        .toc-level-3 {
+            padding-left: 30pt;
+            font-size: 9pt;
+        }
+        
+        .toc-level-4,
+        .toc-level-5,
+        .toc-level-6 {
+            padding-left: 45pt;
+            font-size: 9pt;
+            color: #666;
+        }
+        
+        /* Admonition styles */
+        .admonition {
+            padding: 10pt;
+            margin: 12pt 0;
+            border-left: 4px solid ''' + accent_color + ''';
+            background-color: #f9f9f9;
+            page-break-inside: avoid;
+        }
+        
+        .admonition-title {
+            font-weight: bold;
+            margin-bottom: 6pt;
+            color: ''' + primary_color + ''';
+        }
+        
+        .admonition.note {
+            border-left-color: #3498db;
+            background-color: #e7f3ff;
+        }
+        
+        .admonition.warning {
+            border-left-color: #f39c12;
+            background-color: #fff3cd;
+        }
+        
+        .admonition.danger {
+            border-left-color: #e74c3c;
+            background-color: #ffe7e7;
+        }
+        
+        .admonition.tip {
+            border-left-color: #27ae60;
+            background-color: #d4edda;
+        }
+        '''
+        
+        # Build footer content with page numbering
+        footer_content_parts = []
+        
+        # Add footer text
+        if footer_text:
+            footer_content_parts.append(footer_text)
+        
+        # Add page numbers if enabled
+        if enable_page_numbers:
+            # Format page numbers using xhtml2pdf tags
+            # Replace {page} with <pdf:pagenumber> and {total} with <pdf:pagecount>
+            page_num_text = page_number_format.replace('{page}', '<pdf:pagenumber>').replace('{total}', '<pdf:pagecount>')
+            footer_content_parts.append(page_num_text)
+        
+        # Join footer parts with separator
+        footer_content = ' • '.join(footer_content_parts) if footer_content_parts else ''
+        
+        # Determine footer alignment based on position
+        footer_align_map = {
+            'bottom-left': 'left',
+            'bottom-center': 'center',
+            'bottom-right': 'right'
+        }
+        footer_align = footer_align_map.get(page_number_position, 'center')
+        
         html_document = f'''<!DOCTYPE html>
 <html>
 <head>
@@ -442,8 +694,11 @@ def _render_with_xhtml2pdf(
         #footerContent {{
             font-size: 9pt;
             color: #666;
-            text-align: center;
+            text-align: {footer_align};
         }}
+        
+        {toc_styles}
+        {custom_css}
     </style>
 </head>
 <body>
@@ -457,11 +712,11 @@ def _render_with_xhtml2pdf(
     </div>
     
     <div class="content">
-        {html_content}
+        {content_with_toc}
     </div>
     
     <div id="footerContent">
-        {footer_text}
+        {footer_content}
     </div>
 </body>
 </html>'''

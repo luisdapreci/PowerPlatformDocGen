@@ -878,7 +878,7 @@ Contributions are welcome! Please follow these guidelines:
 ### Areas for Contribution
 
 - [ ] Support for Model-driven Apps analysis
-- [ ] Enhanced PDF styling and formatting
+- [ ] Additional PDF features (bookmarks, hyperlinks, custom headers)
 - [ ] Multi-language documentation support
 - [ ] Dataverse table relationship diagrams
 - [ ] Custom connector documentation
@@ -902,7 +902,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **GitHub CLI**: For seamless authentication and integration
 - **Microsoft Power Platform**: For the low-code platform and CLI tools
 - **FastAPI**: For the modern, fast web framework
-- **WeasyPrint**: For PDF generation capabilities
+- **xhtml2pdf**: For cross-platform PDF generation (pure Python)
 - **Claude (Anthropic)**: For the Sonnet 4.5 model powering the analysis
 
 ---
