@@ -1125,6 +1125,13 @@
         let converterFile = null;
         let unpackingComplete = false;
 
+        // Clean up session on page close/refresh
+        window.addEventListener('beforeunload', () => {
+            if (sessionId) {
+                fetch(`/session/${sessionId}`, { method: 'DELETE', keepalive: true }).catch(() => {});
+            }
+        });
+
         // Mode Selection
         function selectMode(mode) {
             const modeSelector = document.getElementById('modeSelector');
@@ -1920,6 +1927,9 @@
 
         function startOver() {
             if (confirm('Start over? This will clear the current session.')) {
+                if (sessionId) {
+                    fetch(`/session/${sessionId}`, { method: 'DELETE', keepalive: true }).catch(() => {});
+                }
                 sessionId = null;
                 components = [];
                 selectedComponents = [];
