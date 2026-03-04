@@ -199,9 +199,14 @@ Use these tools to explore and analyze Power Platform components directly."""
             context_parts.append("IMPORTANT: Focus ONLY on these selected components when answering user questions.")
             context_parts.append("")
             
-            # Group components by type
-            canvas_apps = [c for c in selected_components if c.endswith('.msapp')]
-            flows = [c for c in selected_components if c.startswith('Workflows/') and c.endswith('.json')]
+            # Group components by type.
+            # Normalise to forward slashes so comparisons work on both Windows and Linux.
+            def _norm(p: str) -> str:
+                return p.replace('\\', '/')
+
+            canvas_apps = [_norm(c) for c in selected_components if c.endswith('.msapp')]
+            flows = [_norm(c) for c in selected_components
+                     if _norm(c).startswith('Workflows/') and c.endswith('.json')]
             
             if canvas_apps:
                 context_parts.append("📱 SELECTED CANVAS APPS:")
@@ -223,10 +228,17 @@ Use these tools to explore and analyze Power Platform components directly."""
             context_parts.append("💡 CRITICAL: When the user asks about 'the app' or 'the flow', they mean the components listed above.")
             if len(canvas_apps) == 1:
                 context_parts.append(f"   - 'the app' = {Path(canvas_apps[0]).stem}")
+            elif len(canvas_apps) > 1:
+                context_parts.append(f"   - 'the apps' = the {len(canvas_apps)} apps listed above")
             if len(flows) == 1:
                 context_parts.append(f"   - 'the flow' = {Path(flows[0]).stem}")
             elif len(flows) > 1:
                 context_parts.append(f"   - 'the flows' = the {len(flows)} flows listed above")
+            if not canvas_apps and not flows:
+                # Fallback: list all paths verbatim so the AI still knows what was selected
+                context_parts.append("   Selected paths:")
+                for c in selected_components:
+                    context_parts.append(f"   - {c}")
             context_parts.append("=" * 80)
             context_parts.append("")
         

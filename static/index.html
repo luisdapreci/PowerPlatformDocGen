@@ -1040,7 +1040,7 @@
                 </div>
 
                 <div class="button-group">
-                    <button class="btn btn-secondary" onclick="goToStep(2)">← Back</button>
+                    <button class="btn btn-secondary" onclick="resetChatAndGoToStep2()">← Back</button>
                     <div></div>
                 </div>
             </div>
@@ -1123,6 +1123,7 @@
         let selectedComponents = [];
         let generatedFiles = [];
         let converterFile = null;
+        let unpackingComplete = false;
 
         // Mode Selection
         function selectMode(mode) {
@@ -1291,6 +1292,13 @@
             document.querySelector(`.step-item[data-step="${step}"]`).classList.add('active');
             
             currentStep = step;
+
+            // Show chat toggle only from step 3 onwards and only when unpacking is done
+            if (step >= 3 && unpackingComplete) {
+                document.getElementById('chatToggle').classList.add('show');
+            } else {
+                document.getElementById('chatToggle').classList.remove('show');
+            }
         }
 
         // Step 1: Upload
@@ -1620,8 +1628,11 @@
                         // Check if Copilot session is ready (unpacking complete)
                         // The backend creates the Copilot session after unpacking
                         if (data.status === 'analyzing' || data.status === 'completed') {
-                            // Unpacking is complete, enable chat
-                            document.getElementById('chatToggle').classList.add('show');
+                            // Unpacking is complete — record state and show toggle if already on step 3+
+                            unpackingComplete = true;
+                            if (currentStep >= 3) {
+                                document.getElementById('chatToggle').classList.add('show');
+                            }
                             
                             // Enable generate documentation button
                             const generateBtn = document.getElementById('generateBtn');
@@ -1658,8 +1669,11 @@
                 if (!done && attempts < maxAttempts) {
                     setTimeout(poll, 2000);
                 } else if (attempts >= maxAttempts) {
-                    // Timeout - show chat anyway but with warning
-                    document.getElementById('chatToggle').classList.add('show');
+                    // Timeout — treat as complete so proceed is still possible
+                    unpackingComplete = true;
+                    if (currentStep >= 3) {
+                        document.getElementById('chatToggle').classList.add('show');
+                    }
                     
                     // Enable button even if polling times out
                     const generateBtn = document.getElementById('generateBtn');
@@ -1846,12 +1860,71 @@
             }
         }
 
+        async function resetChatAndGoToStep2() {
+            // Close chat panel and WebSocket connection
+            const chatPanel = document.getElementById('chatPanel');
+            chatPanel.classList.remove('show');
+
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+            currentStreamingMessage = null;
+
+            // Clear chat messages (keep only the initial greeting)
+            const chatMessages = document.getElementById('chatMessages');
+            chatMessages.innerHTML = `
+                <div class="chat-message assistant">
+                    <div class="message-content">
+                        👋 Hi! I'm your AI assistant. Upload a solution and I can help you:
+                        <ul style="margin: 10px 0; padding-left: 20px;">
+                            <li>Analyze Power Fx formulas</li>
+                            <li>Explain data sources and connections</li>
+                            <li>Review Power Automate flows</li>
+                            <li>Answer questions about your solution</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="chat-suggestions" id="chatSuggestions"></div>
+                <div class="typing-indicator" id="typingIndicator">
+                    <div class="typing-dots">
+                        <span></span><span></span><span></span>
+                    </div>
+                </div>`;
+
+            // Hide the chat toggle button (will reappear after new selection is processed)
+            document.getElementById('chatToggle').classList.remove('show');
+
+            // Reset generation state
+            isGenerating = false;
+            unpackingComplete = false;
+
+            // Clear previous component selection so the list renders clean
+            selectedComponents = [];
+            document.getElementById('selectAllCheckbox').checked = false;
+
+            // Destroy the Copilot chat session on the backend (files are kept)
+            if (sessionId) {
+                try {
+                    await fetch(`/reset-chat-session/${sessionId}`, { method: 'POST' });
+                } catch (e) {
+                    console.warn('Failed to reset chat session:', e);
+                }
+            }
+
+            goToStep(2);
+
+            // Reload the component list so checkboxes are all unchecked and fresh
+            loadComponents();
+        }
+
         function startOver() {
             if (confirm('Start over? This will clear the current session.')) {
                 sessionId = null;
                 components = [];
                 selectedComponents = [];
                 generatedFiles = [];
+                unpackingComplete = false;
                 document.getElementById('fileInput').value = '';
                 goToStep(1);
             }

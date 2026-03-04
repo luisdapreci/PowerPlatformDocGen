@@ -55,6 +55,11 @@ logger = logging.getLogger(__name__)
 # Global session manager
 session_manager = SessionManager()
 
+# Per-session generation counter: incremented each time the user (re-)submits a
+# component selection or resets the chat.  Background tasks capture their generation
+# at start-up and abort before creating a Copilot session when they are stale.
+_selection_generation: Dict[str, int] = {}
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -389,8 +394,13 @@ async def select_components(request: ComponentSelectionRequest):
         
         logger.info(f"Selected {len(request.selected_components)} components for session {session_id}")
         
+        # Bump the generation counter so any still-running task from a previous
+        # selection knows it is now stale and should not create a new session.
+        _selection_generation[session_id] = _selection_generation.get(session_id, 0) + 1
+        current_gen = _selection_generation[session_id]
+        
         # Start unpacking in background
-        asyncio.create_task(unpack_selected_components(session_id, request.selected_components))
+        asyncio.create_task(unpack_selected_components(session_id, request.selected_components, current_gen))
         
         return ComponentSelectionResponse(
             session_id=session_id,
@@ -406,7 +416,7 @@ async def select_components(request: ComponentSelectionRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def unpack_selected_components(session_id: str, selected_paths: List[str]):
+async def unpack_selected_components(session_id: str, selected_paths: List[str], generation: int = 0):
     """
     Background task to unpack selected .msapp files and prepare for analysis
     """
@@ -428,31 +438,26 @@ async def unpack_selected_components(session_id: str, selected_paths: List[str])
                 else:
                     logger.error(f"Failed to unpack {app_name}: {error}")
         
-        # Load selected components to pass to session
-        selection_file = session_dir / "selected_components.json"
-        selected_components = []
-        if selection_file.exists():
-            try:
-                with open(selection_file, 'r', encoding='utf-8') as f:
-                    selected_components = json.load(f)
-                logger.info(f"Loaded {len(selected_components)} selected components for session context")
-            except Exception as e:
-                logger.warning(f"Could not load selected components: {e}")
+        # Guard against stale tasks: if the user went back and submitted a new
+        # selection while this task was running, skip session creation entirely.
+        if _selection_generation.get(session_id, 0) != generation:
+            logger.info(f"Aborting stale unpack task for {session_id} (task gen={generation}, current gen={_selection_generation.get(session_id, 0)})")
+            return
         
-        # Destroy existing session if it exists (to ensure fresh context with selected components)
+        # Destroy existing session if it exists (to ensure fresh context with the new selection)
         existing_session = session_manager.get_session(session_id)
         if existing_session:
-            logger.info(f"Destroying existing session for {session_id} to recreate with selected components")
+            logger.info(f"Destroying existing session for {session_id} to recreate with updated selected components")
             await session_manager.destroy_session(session_id)
         
-        # Create Copilot session for analysis
+        # Create Copilot session for analysis using the exact selection from this request
         copilot_session = await session_manager.create_session(
             session_id=session_id,
             working_directory=extract_dir,
-            selected_components=selected_components
+            selected_components=selected_paths
         )
         
-        logger.info(f"Session {session_id} is ready for documentation generation with {len(selected_components)} selected components")
+        logger.info(f"Session {session_id} is ready for documentation generation with {len(selected_paths)} selected components")
         
     except Exception as e:
         logger.exception(f"Error unpacking components for session {session_id}")
@@ -760,6 +765,24 @@ async def delete_session(session_id: str):
         return {"message": f"Session {session_id} deleted successfully"}
     except Exception as e:
         logger.exception(f"Error deleting session {session_id}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/reset-chat-session/{session_id}")
+async def reset_chat_session(session_id: str):
+    """
+    Destroy only the Copilot chat session, keeping uploaded files intact.
+    Called when the user navigates back to the component selection screen so that
+    the chat restarts with fresh context after the user reconfirms their selection.
+    Also bumps the generation counter to invalidate any in-flight unpack tasks.
+    """
+    try:
+        # Invalidate any background task that is still running for the old selection
+        _selection_generation[session_id] = _selection_generation.get(session_id, 0) + 1
+        await session_manager.destroy_session(session_id)
+        return {"message": f"Chat session for {session_id} reset successfully"}
+    except Exception as e:
+        logger.exception(f"Error resetting chat session {session_id}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

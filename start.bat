@@ -126,5 +126,8 @@ echo.
 echo Press Ctrl+C to stop the server
 echo.
 
+REM Open browser after a short delay to let the server start
+start "" cmd /c "timeout /t 3 /nobreak >nul && start http://localhost:8000/static/index.html"
+
 REM Start the application
 python src\main.py
