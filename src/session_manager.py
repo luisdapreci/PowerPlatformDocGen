@@ -1,6 +1,5 @@
 """Session management for Copilot SDK"""
 import asyncio
-import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Optional, List
@@ -336,12 +335,6 @@ Use these tools to explore and analyze Power Platform components directly."""
                 logger.error(f"Error destroying session {session_id}: {e}")
             finally:
                 del self.sessions[session_id]
-
-        # Always clean up temp files from disk (covers timeout-based expiry too)
-        session_dir = config.TEMP_DIR / session_id
-        if session_dir.exists():
-            shutil.rmtree(session_dir, ignore_errors=True)
-            logger.info(f"Cleaned up temp dir for session {session_id}")
     
     async def _cleanup_loop(self):
         """Periodically clean up expired sessions"""
