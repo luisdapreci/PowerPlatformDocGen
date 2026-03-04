@@ -90,9 +90,16 @@ class DocumentationGenerator:
             # This includes: read_file, write_file, replace_string_in_file, list_dir, grep_search, etc.
             session_config = {
                 "model": config.COPILOT_MODEL,
+                "working_directory": str(working_directory),
                 "streaming": False,
                 # NOTE: Do NOT specify available_tools - that RESTRICTS tools, not enables them!
                 # By omitting it, ALL built-in file operation tools are available.
+                # Auto-approve file read/write requests; deny shell for security
+                "on_permission_request": lambda req, ctx: (
+                    {"kind": "denied-by-rules"}
+                    if req.get("kind") == "shell"
+                    else {"kind": "approved"}
+                ),
                 "system_message": {
                     "mode": "append",
                     "content": self._build_incremental_system_prompt(str(doc_file))

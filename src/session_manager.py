@@ -38,8 +38,6 @@ class SessionManager:
         self,
         session_id: str,
         working_directory: Path,
-        tools: Optional[List] = None,
-        available_tools: Optional[List[str]] = None,
         selected_components: Optional[List[str]] = None
     ) -> CopilotSession:
         """
@@ -143,7 +141,13 @@ Use these tools to explore and analyze Power Platform components directly."""
             "system_message": {
                 "mode": "append",
                 "content": detailed_prompt
-            }
+            },
+            # Auto-approve file read requests; deny shell/write for security
+            "on_permission_request": lambda req, ctx: (
+                {"kind": "denied-by-rules"}
+                if req.get("kind") in ("shell", "write")
+                else {"kind": "approved"}
+            ),
         }
         
         # Add infinite sessions config if enabled
@@ -153,16 +157,6 @@ Use these tools to explore and analyze Power Platform components directly."""
                 "background_compaction_threshold": config.COPILOT_COMPACTION_THRESHOLD,
                 "buffer_exhaustion_threshold": config.COPILOT_BUFFER_THRESHOLD
             }
-        
-        # NOTE: By default, ALL built-in tools are enabled (--allow-all mode).
-        # Only use available_tools or excluded_tools if you need to RESTRICT tool access.
-        # Per SDK docs: "By default, the SDK will operate the Copilot CLI in the equivalent
-        # of --allow-all being passed to the CLI, enabling all first-party tools"
-        
-        # Optionally restrict tools if specified
-        if available_tools:
-            session_config["available_tools"] = available_tools
-        # Otherwise, leave it unset to allow ALL built-in tools by default
         
         try:
             copilot_session = await self.client.create_session(session_config)

@@ -449,7 +449,6 @@ async def unpack_selected_components(session_id: str, selected_paths: List[str])
         copilot_session = await session_manager.create_session(
             session_id=session_id,
             working_directory=extract_dir,
-            tools=None,
             selected_components=selected_components
         )
         
@@ -544,7 +543,6 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
             copilot_session = await session_manager.create_session(
                 session_id=session_id,
                 working_directory=extract_dir,
-                tools=None,
                 selected_components=selected_components
             )
         

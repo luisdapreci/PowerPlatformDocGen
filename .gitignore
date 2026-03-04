@@ -31,7 +31,6 @@ wheels/
 
 # Application directories
 uploads/
-temp/
 output/
 
 # Logs
