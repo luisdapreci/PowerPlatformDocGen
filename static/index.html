@@ -1940,6 +1940,33 @@
                 generatedFiles = [];
                 unpackingComplete = false;
                 document.getElementById('fileInput').value = '';
+
+                // Close WebSocket
+                if (ws) {
+                    ws.onclose = null; // suppress default handler
+                    ws.close();
+                    ws = null;
+                }
+                currentStreamingMessage = null;
+
+                // Clear chat messages (keep the typing indicator element)
+                const chatMessages = document.getElementById('chatMessages');
+                const typingIndicator = document.getElementById('typingIndicator');
+                chatMessages.innerHTML = '';
+                typingIndicator.classList.remove('show');
+                chatMessages.appendChild(typingIndicator);
+
+                // Clear chat suggestions
+                document.getElementById('chatSuggestions').innerHTML = '';
+
+                // Re-enable chat input
+                enableChatInput();
+                document.getElementById('chatInput').value = '';
+
+                // Hide chat panel if open
+                const chatPanel = document.getElementById('chatPanel');
+                chatPanel.classList.remove('show');
+
                 goToStep(1);
             }
         }
