@@ -43,7 +43,7 @@ PowerPlatformDocGen/
 │   └── utils/
 │       ├── file_utils.py    # File helpers (zip, msapp, session dirs)
 │       ├── pac_cli.py       # Power Platform CLI wrapper
-│       └── pdf_renderer.py  # Markdown → PDF conversion
+│       └── docx_renderer.py # Markdown → Word (.docx) conversion via Pandoc
 ├── tests/                   # Test suite (pytest + asyncio)
 ├── static/                  # Frontend HTML/CSS/JS
 ├── templates/               # Documentation templates

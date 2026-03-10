@@ -40,7 +40,7 @@ from utils import (
     check_pac_cli_available,
     unpack_all_msapps
 )
-from utils.pdf_renderer import render_markdown_to_docx
+from utils.docx_renderer import render_markdown_to_docx
 from session_manager import SessionManager
 from analyze_solution_detailed import SolutionAnalyzer
 from doc_generator import get_doc_generator
