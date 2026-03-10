@@ -81,9 +81,16 @@ async def lifespan(app: FastAPI):
         else:
             logger.info("Power Platform CLI (pac) is available")
     
+    # Clean up any stale temp directories left over from a previous server run
+    if config.TEMP_DIR.exists():
+        for stale_dir in config.TEMP_DIR.iterdir():
+            if stale_dir.is_dir():
+                shutil.rmtree(stale_dir, ignore_errors=True)
+                logger.info(f"Removed stale temp directory: {stale_dir.name}")
+
     # Initialize session manager (no session restoration - start fresh each time)
     await session_manager.initialize(restore_sessions=False)
-    
+
     yield
     
 # Create FastAPI app
@@ -765,6 +772,21 @@ async def delete_session(session_id: str):
         return {"message": f"Session {session_id} deleted successfully"}
     except Exception as e:
         logger.exception(f"Error deleting session {session_id}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/session/{session_id}/cleanup")
+async def cleanup_session_beacon(session_id: str):
+    """
+    Clean up a session via POST — used by navigator.sendBeacon on page unload.
+    Behaves identically to DELETE /session/{session_id}.
+    """
+    try:
+        await session_manager.destroy_session(session_id)
+        cleanup_session(session_id)
+        return {"message": f"Session {session_id} cleaned up successfully"}
+    except Exception as e:
+        logger.exception(f"Error cleaning up session {session_id}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

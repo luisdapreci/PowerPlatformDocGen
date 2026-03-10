@@ -3,7 +3,7 @@ import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Optional, List
-from copilot import CopilotClient, CopilotSession
+from copilot import CopilotClient, CopilotSession, PermissionRequestResult
 import logging
 import config
 
@@ -144,9 +144,9 @@ Use these tools to explore and analyze Power Platform components directly."""
             },
             # Auto-approve file read requests; deny shell/write for security
             "on_permission_request": lambda req, ctx: (
-                {"kind": "denied-by-rules"}
-                if req.get("kind") in ("shell", "write")
-                else {"kind": "approved"}
+                PermissionRequestResult(kind="denied-by-rules")
+                if req.kind.value in ("shell", "write")
+                else PermissionRequestResult(kind="approved")
             ),
         }
         
@@ -351,6 +351,9 @@ Use these tools to explore and analyze Power Platform components directly."""
                 for session_id in expired:
                     logger.info(f"Cleaning up expired session {session_id}")
                     await self.destroy_session(session_id)
+                    # Also remove temp files for this session
+                    from utils.file_utils import cleanup_session as cleanup_session_files
+                    cleanup_session_files(session_id)
                     
             except Exception as e:
                 logger.error(f"Error in cleanup loop: {e}")

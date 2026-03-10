@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from datetime import datetime
-from copilot import CopilotClient
+from copilot import CopilotClient, PermissionRequestResult
 import config
 
 logger = logging.getLogger(__name__)
@@ -96,9 +96,9 @@ class DocumentationGenerator:
                 # By omitting it, ALL built-in file operation tools are available.
                 # Auto-approve file read/write requests; deny shell for security
                 "on_permission_request": lambda req, ctx: (
-                    {"kind": "denied-by-rules"}
-                    if req.get("kind") == "shell"
-                    else {"kind": "approved"}
+                    PermissionRequestResult(kind="denied-by-rules")
+                    if req.kind.value == "shell"
+                    else PermissionRequestResult(kind="approved")
                 ),
                 "system_message": {
                     "mode": "append",

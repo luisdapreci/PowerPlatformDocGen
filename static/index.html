@@ -1125,10 +1125,16 @@
         let converterFile = null;
         let unpackingComplete = false;
 
-        // Clean up session on page close/refresh
+        // Clean up session on page close/refresh.
+        // navigator.sendBeacon (POST) is the most reliable on unload; fetch+keepalive is the fallback.
         window.addEventListener('beforeunload', () => {
             if (sessionId) {
-                fetch(`/session/${sessionId}`, { method: 'DELETE', keepalive: true }).catch(() => {});
+                const sent = navigator.sendBeacon
+                    ? navigator.sendBeacon(`/session/${sessionId}/cleanup`, '')
+                    : false;
+                if (!sent) {
+                    fetch(`/session/${sessionId}`, { method: 'DELETE', keepalive: true }).catch(() => {});
+                }
             }
         });
 
