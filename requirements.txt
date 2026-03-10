@@ -11,10 +11,8 @@ github-copilot-sdk==0.1.19
 # File Processing
 aiofiles==23.2.1
 
-# PDF Generation
-markdown==3.5.2
-xhtml2pdf==0.2.16
-Pygments==2.17.2
+# Word Document Generation
+pypandoc==1.16.2
 
 # YAML Processing (Power Platform uses YAML for formulas)
 pyyaml==6.0.1

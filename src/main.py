@@ -40,7 +40,7 @@ from utils import (
     check_pac_cli_available,
     unpack_all_msapps
 )
-from utils.pdf_renderer import render_markdown_to_pdf
+from utils.pdf_renderer import render_markdown_to_docx
 from session_manager import SessionManager
 from analyze_solution_detailed import SolutionAnalyzer
 from doc_generator import get_doc_generator
@@ -1270,10 +1270,10 @@ async def download_file(session_id: str, filename: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/download-pdf/{session_id}/{filename}")
-async def download_pdf(session_id: str, filename: str):
+@app.get("/download-docx/{session_id}/{filename}")
+async def download_docx(session_id: str, filename: str):
     """
-    Download a generated documentation file as PDF (on-demand rendering)
+    Download a generated documentation file as a Word document (on-demand rendering)
     """
     try:
         output_dir = get_output_dir(session_id)
@@ -1281,10 +1281,10 @@ async def download_pdf(session_id: str, filename: str):
         # Find the markdown file (with or without .md extension in filename)
         if filename.endswith('.md'):
             md_filename = filename
-            pdf_filename = filename[:-3] + '.pdf'
+            docx_filename = filename[:-3] + '.docx'
         else:
             md_filename = filename + '.md' if not filename.endswith('.md') else filename
-            pdf_filename = filename.replace('.md', '.pdf') if '.md' in filename else filename + '.pdf'
+            docx_filename = filename.replace('.md', '.docx') if '.md' in filename else filename + '.docx'
         
         md_file_path = output_dir / md_filename
         
@@ -1295,39 +1295,39 @@ async def download_pdf(session_id: str, filename: str):
         with open(md_file_path, 'r', encoding='utf-8') as f:
             markdown_content = f.read()
         
-        # Generate PDF on-demand
-        pdf_file_path = output_dir / pdf_filename
-        result = render_markdown_to_pdf(
+        # Generate Word document on-demand
+        docx_file_path = output_dir / docx_filename
+        result = render_markdown_to_docx(
             markdown_content=markdown_content,
-            output_path=str(pdf_file_path),
-            config=config.PDF_CONFIG
+            output_path=str(docx_file_path),
+            config=config.DOCX_CONFIG
         )
         
         if result['status'] != 'success':
-            logger.error(f"PDF generation failed: {result.get('error', 'Unknown error')}")
+            logger.error(f"Word document generation failed: {result.get('error', 'Unknown error')}")
             raise HTTPException(
                 status_code=500,
-                detail=f"PDF generation failed: {result.get('error', 'Unknown error')}"
+                detail=f"Word document generation failed: {result.get('error', 'Unknown error')}"
             )
         
-        # Return the generated PDF
+        # Return the generated Word document
         return FileResponse(
-            path=pdf_file_path,
-            filename=pdf_filename,
-            media_type='application/pdf'
+            path=docx_file_path,
+            filename=docx_filename,
+            media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception(f"Error generating/downloading PDF for session {session_id}")
+        logger.exception(f"Error generating/downloading Word document for session {session_id}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/convert-markdown-to-pdf")
-async def convert_markdown_to_pdf(file: UploadFile = File(...)):
+@app.post("/convert-markdown-to-docx")
+async def convert_markdown_to_docx(file: UploadFile = File(...)):
     """
-    Convert an uploaded markdown file to PDF (standalone feature)
+    Convert an uploaded markdown file to a Word document (standalone feature)
     """
     try:
         # Validate file
@@ -1350,31 +1350,31 @@ async def convert_markdown_to_pdf(file: UploadFile = File(...)):
         conversion_dir = config.TEMP_DIR / "conversions" / conversion_id
         conversion_dir.mkdir(parents=True, exist_ok=True)
         
-        # Generate PDF filename from markdown filename
-        pdf_filename = file.filename[:-3] + '.pdf' if file.filename.endswith('.md') else file.filename + '.pdf'
-        pdf_path = conversion_dir / pdf_filename
+        # Generate .docx filename from markdown filename
+        docx_filename = file.filename[:-3] + '.docx' if file.filename.endswith('.md') else file.filename + '.docx'
+        docx_path = conversion_dir / docx_filename
         
-        # Convert to PDF
-        result = render_markdown_to_pdf(
+        # Convert to Word document
+        result = render_markdown_to_docx(
             markdown_content=markdown_content,
-            output_path=str(pdf_path),
-            config=config.PDF_CONFIG
+            output_path=str(docx_path),
+            config=config.DOCX_CONFIG
         )
         
         if result['status'] != 'success':
-            logger.error(f"PDF conversion failed: {result.get('error', 'Unknown error')}")
+            logger.error(f"Word document conversion failed: {result.get('error', 'Unknown error')}")
             # Cleanup
             shutil.rmtree(conversion_dir, ignore_errors=True)
             raise HTTPException(
                 status_code=500,
-                detail=f"PDF conversion failed: {result.get('error', 'Unknown error')}"
+                detail=f"Word document conversion failed: {result.get('error', 'Unknown error')}"
             )
         
-        # Return the PDF
+        # Return the Word document
         response = FileResponse(
-            path=pdf_path,
-            filename=pdf_filename,
-            media_type='application/pdf'
+            path=docx_path,
+            filename=docx_filename,
+            media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
         
         # Schedule cleanup after response is sent (do it in background)
@@ -1389,7 +1389,7 @@ async def convert_markdown_to_pdf(file: UploadFile = File(...)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception(f"Error converting markdown to PDF")
+        logger.exception(f"Error converting markdown to Word document")
         raise HTTPException(status_code=500, detail=str(e))
 
 

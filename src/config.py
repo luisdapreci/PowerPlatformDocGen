@@ -71,43 +71,23 @@ COPILOT_BUFFER_THRESHOLD = 0.90  # Block at 90% until compaction completes
 # Hooks configuration
 COPILOT_ENABLE_HOOKS = False  # Enable in Phase 3
 
-# PDF Generation Configuration
-PDF_CONFIG = {
-    # Brand Colors (hex format)
-    'primary_color': '#4f6d8f',  # Microsoft Blue
-    'secondary_color': '#3f6d78',  # Darker Blue
-    'accent_color': '#5d9cac',  # Light Blue
-    
+# Word Document Generation Configuration
+DOCX_CONFIG = {
     # Company Information
     'company_name': 'Nextant Power Platform Documentation',
-    'footer_text': 'Confidential - Internal Use Only',
-    
-    # Logo Settings
-    'logo_path': 'assets/company_logo.png',  # Relative path from project root (or None to disable)
-    
-    # Page Setup
-    'page_size': 'A4',  # Options: A4, Letter, Legal
+    'author': 'Nextant',
     
     # Feature Toggles
     'enable_toc': False,  # Generate table of contents
-    'enable_page_numbers': True,  # Show page numbers in footer
     
-    # Page Numbering
-    'page_number_format': 'Page {page} of {total}',  # Options: 'Page {page} of {total}', '{page} / {total}', '{page}', etc.
-    'page_number_position': 'bottom-center',  # Options: bottom-center, bottom-right, bottom-left
+    # Reference .docx for custom branding/styles (optional)
+    # Create a styled .docx with custom fonts/colours, point to it here.
+    # Relative path from project root, or None to use Pandoc default.
+    'reference_doc': None,  # e.g. 'assets/reference.docx'
     
-    # Custom CSS (optional)
-    # Add custom CSS to override or extend default styles
-    'custom_css': '''
-        /* You can add custom CSS here */
-        /* Example: 
-        h1 { text-transform: uppercase; }
-        .custom-class { color: red; }
-        */
-    ''',
-    
-    # Advanced Options
-    'theme': 'default',  # Future use: support for different color themes
+    # Highlight style for code blocks
+    # Options: pygments, kate, monochrome, breezeDark, espresso, zenburn, haddock, tango
+    'highlight_style': 'tango',
 }
 
 # Ensure directories exist

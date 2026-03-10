@@ -902,8 +902,8 @@
                 </div>
                 <div class="mode-btn" onclick="selectMode('markdown')">
                     <div class="mode-icon">📄</div>
-                    <div class="mode-title">Convert Markdown to PDF</div>
-                    <div class="mode-description">Upload a markdown file and convert it to a professionally formatted PDF</div>
+                    <div class="mode-title">Convert Markdown to Word</div>
+                    <div class="mode-description">Upload a markdown file and convert it to a Word document (.docx)</div>
                 </div>
             </div>
         </div>
@@ -912,8 +912,8 @@
         <div class="markdown-converter" id="markdownConverter">
             <button class="back-to-modes" onclick="backToModes()">← Back to Mode Selection</button>
             
-            <h2>Convert Markdown to PDF</h2>
-            <p style="color: #666; margin: 20px 0;">Upload a markdown (.md) file to convert it to a professionally formatted PDF</p>
+            <h2>Convert Markdown to Word</h2>
+            <p style="color: #666; margin: 20px 0;">Upload a markdown (.md) file to convert it to a Word document (.docx)</p>
 
             <div class="converter-upload-area" id="converterUploadArea">
                 <div class="converter-icon">📄</div>
@@ -934,8 +934,8 @@
             </div>
 
             <div style="text-align: center; margin: 30px 0;">
-                <button class="convert-btn" id="convertBtn" onclick="convertMarkdownToPdf()">
-                    🎨 Convert to PDF
+                <button class="convert-btn" id="convertBtn" onclick="convertMarkdownToDocx()">
+                    📝 Convert to Word
                 </button>
             </div>
 
@@ -1058,8 +1058,8 @@
                     <button class="btn btn-success" onclick="downloadDocumentation()" style="font-size: 1.2rem; padding: 15px 40px; margin: 10px;">
                         📄 Download Markdown
                     </button>
-                    <button class="btn btn-primary" onclick="downloadPDF()" style="font-size: 1.2rem; padding: 15px 40px; margin: 10px; background-color: #dc3545; border-color: #dc3545;">
-                        📑 Download PDF
+                    <button class="btn btn-primary" onclick="downloadDocx()" style="font-size: 1.2rem; padding: 15px 40px; margin: 10px; background-color: #0d6efd; border-color: #0d6efd;">
+                        📄 Download Word
                     </button>
                 </div>
 
@@ -1167,7 +1167,7 @@
             markdownConverter.classList.remove('active');
         }
 
-        // Markdown to PDF Converter
+        // Markdown to Word Converter
         const converterUploadArea = document.getElementById('converterUploadArea');
         const converterFileInput = document.getElementById('converterFileInput');
         const converterFileInfo = document.getElementById('converterFileInfo');
@@ -1228,21 +1228,21 @@
             converterStatus.textContent = '✅ File ready for conversion';
         }
 
-        async function convertMarkdownToPdf() {
+        async function convertMarkdownToDocx() {
             if (!converterFile) {
                 return;
             }
 
             convertBtn.disabled = true;
             converterStatus.className = 'status info';
-            converterStatus.textContent = '🔄 Converting markdown to PDF...';
+            converterStatus.textContent = '🔄 Converting markdown to Word document...';
             converterSpinner.style.display = 'block';
 
             try {
                 const formData = new FormData();
                 formData.append('file', converterFile);
 
-                const response = await fetch('/convert-markdown-to-pdf', {
+                const response = await fetch('/convert-markdown-to-docx', {
                     method: 'POST',
                     body: formData
                 });
@@ -1252,19 +1252,19 @@
                     throw new Error(error.detail || 'Conversion failed');
                 }
 
-                // Download the PDF
+                // Download the Word document
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = converterFile.name.replace('.md', '.pdf');
+                a.download = converterFile.name.replace('.md', '.docx');
                 document.body.appendChild(a);
                 a.click();
                 window.URL.revokeObjectURL(url);
                 document.body.removeChild(a);
 
                 converterStatus.className = 'status success';
-                converterStatus.textContent = '✅ PDF downloaded successfully!';
+                converterStatus.textContent = '✅ Word document downloaded successfully!';
             } catch (error) {
                 console.error('Conversion error:', error);
                 converterStatus.className = 'status error';
@@ -1837,31 +1837,29 @@
             }
         }
 
-        function downloadPDF() {
+        function downloadDocx() {
             if (generatedFiles.length > 0) {
                 const filename = generatedFiles[0]; // Already just the filename
                 
                 // Show loading indicator
                 const originalButton = event.target;
                 const originalText = originalButton.innerHTML;
-                originalButton.innerHTML = '⏳ Generating PDF...';
+                originalButton.innerHTML = '⏳ Generating Word document...';
                 originalButton.disabled = true;
                 
-                // Open PDF download (will be generated on-demand)
-                const pdfWindow = window.open(`/download-pdf/${sessionId}/${filename}`, '_blank');
+                // Trigger download of the Word document
+                const a = document.createElement('a');
+                a.href = `/download-docx/${sessionId}/${filename}`;
+                a.download = filename.replace('.md', '.docx');
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
                 
                 // Reset button after a delay
                 setTimeout(() => {
                     originalButton.innerHTML = originalText;
                     originalButton.disabled = false;
                 }, 3000);
-                
-                // Handle case where popup was blocked
-                if (!pdfWindow) {
-                    alert('Please allow popups for this site to download the PDF');
-                    originalButton.innerHTML = originalText;
-                    originalButton.disabled = false;
-                }
             } else {
                 alert('No documentation files available to download');
             }
