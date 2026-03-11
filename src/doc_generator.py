@@ -170,12 +170,21 @@ class DocumentationGenerator:
                     # Build attachments and screenshot context for prompt
                     attachments = []
                     if file_screenshots:
-                        screenshot_section = "\n\n**USER-PROVIDED SCREENSHOTS FOR THIS COMPONENT:**\n"
-                        for ss in file_screenshots:
+                        screenshot_section = "\n\n**USER-PROVIDED SCREENSHOTS FOR THIS COMPONENT:**\n\n"
+                        for si, ss in enumerate(file_screenshots, 1):
                             attachments.append({"type": "file", "path": ss['path']})
-                            screenshot_section += f"\n- **Screenshot:** {ss.get('context', 'No context provided')}\n"
-                            screenshot_section += f"  Embeddable markdown: `{ss['base64_markdown']}`\n"
-                        screenshot_section += "\n**INSTRUCTIONS:** Analyze each screenshot above. Place the embeddable markdown snippet in the most relevant documentation section (e.g., UI screenshots in '### 3.3 User Interface', flow screenshots in '### 3.4 Logic and Automation'). Add a descriptive caption below each image.\n"
+                            screenshot_section += f"**Screenshot {si}:** {ss.get('context', 'No context provided')}\n"
+                            screenshot_section += f"Embeddable markdown (copy EXACTLY into the document — do NOT truncate or summarize):\n"
+                            screenshot_section += f"```\n{ss['base64_markdown']}\n```\n\n"
+                        screenshot_section += "**MANDATORY IMAGE EMBEDDING TASK:**\n"
+                        screenshot_section += "For EACH screenshot above you MUST:\n"
+                        screenshot_section += "1. Analyze the attached image visually to understand what it shows\n"
+                        screenshot_section += "2. Use `replace_string_in_file` to insert the embeddable markdown block into the most relevant section of the documentation file\n"
+                        screenshot_section += "   - UI/screen screenshots → `### 3.3 User Interface` or `### 4.2 Features`\n"
+                        screenshot_section += "   - Flow/automation screenshots → `### 3.4 Logic and Automation`\n"
+                        screenshot_section += "   - Data/output screenshots → `### 2.2 Data Sources` or `### 8.2 Screenshots or Diagrams`\n"
+                        screenshot_section += "3. Add a caption line below the image: `*Figure: <description of what the image shows>*`\n"
+                        screenshot_section += "4. The base64 string is long — that is expected. Copy it completely.\n\n"
                         prompt += screenshot_section
                     
                     # Send prompt with optional image attachments
@@ -211,6 +220,7 @@ class DocumentationGenerator:
             
             logger.info("Final pass: Formatting and filling gaps...")
             
+            all_screenshots = screenshots or []
             final_prompt = self._build_incremental_final_prompt(
                 str(doc_file),
                 selection_context,
@@ -219,10 +229,11 @@ class DocumentationGenerator:
                 critical_files,
                 non_critical_files,
                 working_directory,
-                global_screenshots=global_screenshots
+                global_screenshots=global_screenshots,
+                all_screenshots=all_screenshots
             )
             
-            # Build attachments for global screenshots
+            # Build attachments for global screenshots (component-specific ones were already embedded in Pass 1)
             final_attachments = [
                 {"type": "file", "path": ss['path']} for ss in global_screenshots
             ]
@@ -359,6 +370,27 @@ You will receive these images as attachments in some prompts and their embeddabl
         section += "2. Determine the best section for placement based on content and context\n"
         section += "3. Use replace_string_in_file to insert the embeddable markdown at the right location\n"
         section += "4. Add a descriptive caption below the image\n\n"
+        return section
+    
+    @staticmethod
+    def _build_screenshot_verification_prompt(all_screenshots: Optional[List[Dict[str, Any]]] = None) -> str:
+        """Build a verification prompt to ensure all screenshots were embedded."""
+        if not all_screenshots:
+            return ""
+        
+        section = f"\n[CHECK] **SCREENSHOT VERIFICATION ({len(all_screenshots)} total):**\n\n"
+        section += "After completing all other tasks, verify that EVERY screenshot below appears in the documentation.\n"
+        section += "Search the document for `![` markers or `data:image` strings to confirm embedding.\n\n"
+        for i, ss in enumerate(all_screenshots, 1):
+            context = ss.get('context', 'No context provided')
+            comp = ss.get('component_path', 'Global')
+            section += f"  {i}. \"{context}\" (component: {comp or 'Global'})\n"
+        section += f"\nIf any screenshot is MISSING from the document, embed it now using the snippet below and `replace_string_in_file`.\n"
+        section += "Place missing screenshots in `### 8.2 Screenshots or Diagrams` as a fallback.\n\n"
+        for i, ss in enumerate(all_screenshots, 1):
+            context = ss.get('context', 'No context provided')
+            section += f"**Screenshot {i} (\"{context}\")** — embeddable snippet:\n"
+            section += f"```\n{ss['base64_markdown']}\n```\n\n"
         return section
     
     async def generate_documentation_consolidation(
@@ -964,7 +996,8 @@ BEGIN WITH TOOL USAGE IMMEDIATELY - NO TEXT RESPONSES."""
         critical_files: List[tuple],
         non_critical_files: List[tuple],
         working_directory: Path,
-        global_screenshots: Optional[List[Dict[str, Any]]] = None
+        global_screenshots: Optional[List[Dict[str, Any]]] = None,
+        all_screenshots: Optional[List[Dict[str, Any]]] = None
     ) -> str:
         """Build prompt for final formatting and gap-filling pass with exploration capability"""
         
@@ -1116,6 +1149,8 @@ You've just analyzed {files_analyzed} Power Platform files and incrementally upd
 Make all necessary edits to `{doc_file_path}` to produce a polished, complete, professional documentation file.
 
 {self._build_global_screenshots_prompt(global_screenshots)}
+
+{self._build_screenshot_verification_prompt(all_screenshots)}
 
 Focus on:
 - **Completeness** (fill all fillable sections, explore additional files when needed)
