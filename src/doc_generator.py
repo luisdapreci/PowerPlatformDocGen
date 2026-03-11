@@ -243,13 +243,34 @@ class DocumentationGenerator:
                 final_payload["attachments"] = final_attachments
                 logger.info(f"Attaching {len(final_attachments)} global screenshot(s) for final pass")
             
-            result = await temp_session.send_and_wait(
-                final_payload,
-                timeout=config.DOC_GEN_SECTION_TIMEOUT
-            )
-            
-            if result and hasattr(result, 'data') and hasattr(result.data, 'content'):
-                logger.info(f"✓ Final formatting complete")
+            try:
+                result = await temp_session.send_and_wait(
+                    final_payload,
+                    timeout=config.DOC_GEN_FINAL_PASS_TIMEOUT
+                )
+                
+                if result and hasattr(result, 'data') and hasattr(result.data, 'content'):
+                    logger.info(f"✓ Final formatting complete")
+            except (TimeoutError, asyncio.TimeoutError):
+                logger.warning("Final pass timed out, retrying with simplified prompt...")
+                retry_prompt = (
+                    f"The previous formatting pass timed out. Please quickly finish editing "
+                    f"`{doc_file}`. Focus ONLY on:\n"
+                    f"1. Read the file with read_file\n"
+                    f"2. Fill any remaining placeholder text in the frontmatter (project name, date, purpose)\n"
+                    f"3. Generate a Table of Contents if missing\n"
+                    f"4. Replace any remaining template placeholders with '*Not available*'\n"
+                    f"Do NOT explore additional files. Make minimal edits and finish quickly."
+                )
+                try:
+                    result = await temp_session.send_and_wait(
+                        {"prompt": retry_prompt},
+                        timeout=config.DOC_GEN_SECTION_TIMEOUT
+                    )
+                    if result and hasattr(result, 'data') and hasattr(result.data, 'content'):
+                        logger.info("✓ Final formatting complete (retry)")
+                except (TimeoutError, asyncio.TimeoutError):
+                    logger.warning("Final pass retry also timed out, proceeding with current documentation state")
             
             # Read the final documentation
             documentation = doc_file.read_text(encoding='utf-8')
