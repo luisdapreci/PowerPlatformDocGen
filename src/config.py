@@ -76,7 +76,11 @@ DOCX_CONFIG = {
     # Company Information
     'company_name': 'Nextant Power Platform Documentation',
     'author': 'Nextant',
-    
+
+    # Company logo embedded in the markdown/docx (relative to project root, or None to skip)
+    'logo_path': 'assets/company_logo.png',
+    'logo_width_inches': 1.5,
+
     # Feature Toggles
     'enable_toc': False,  # Generate table of contents
     

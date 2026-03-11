@@ -40,7 +40,7 @@ from utils import (
     check_pac_cli_available,
     unpack_all_msapps
 )
-from utils.docx_renderer import render_markdown_to_docx
+from utils.docx_renderer import render_markdown_to_docx, prepend_logo_to_markdown
 from session_manager import SessionManager
 from analyze_solution_detailed import SolutionAnalyzer
 from doc_generator import get_doc_generator
@@ -1246,8 +1246,13 @@ All components in the solution are included for documentation.
                     copilot_documentation = actual_file_path.read_text(encoding='utf-8')
                     logger.info(f"Read {len(copilot_documentation)} characters from actual documentation")
         
+        copilot_documentation = prepend_logo_to_markdown(
+            copilot_documentation,
+            config.DOCX_CONFIG.get('logo_path', ''),
+            config.DOCX_CONFIG.get('logo_width_inches', 1.5),
+        )
         output_file.write_text(copilot_documentation, encoding='utf-8')
-        
+
         # Return just the filename, not the full path
         markdown_files = [output_file.name]
         
@@ -1376,6 +1381,14 @@ async def convert_markdown_to_docx(file: UploadFile = File(...)):
         docx_filename = file.filename[:-3] + '.docx' if file.filename.endswith('.md') else file.filename + '.docx'
         docx_path = conversion_dir / docx_filename
         
+        # Inject logo unless the file already contains one (e.g. previously generated .md)
+        if not markdown_content.lstrip().startswith('![](data:image'):
+            markdown_content = prepend_logo_to_markdown(
+                markdown_content,
+                config.DOCX_CONFIG.get('logo_path', ''),
+                config.DOCX_CONFIG.get('logo_width_inches', 1.5),
+            )
+
         # Convert to Word document
         result = render_markdown_to_docx(
             markdown_content=markdown_content,
