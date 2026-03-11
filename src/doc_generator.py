@@ -4,6 +4,7 @@ Handles documentation generation separately from chat sessions to avoid interfer
 """
 
 import asyncio
+import base64
 import logging
 from pathlib import Path
 from typing import Dict, List, Any, Optional
@@ -45,7 +46,8 @@ class DocumentationGenerator:
         non_critical_files: List[tuple],
         template_path: Path,
         selection_context: str = "",
-        business_context: str = ""
+        business_context: str = "",
+        screenshots: Optional[List[Dict[str, Any]]] = None
     ) -> str:
         """
         [NEW METHOD - Incremental template editing approach]
@@ -60,6 +62,10 @@ class DocumentationGenerator:
             template_path: Path to template file (will be copied to working directory)
             selection_context: Context about selected components
             business_context: User-provided business context
+            screenshots: Optional list of screenshot dicts with keys:
+                         'path' (file path), 'context' (user description),
+                         'component_path' (associated component or None),
+                         'mime_type', 'base64_markdown' (pre-built embed snippet)
             
         Returns:
             Path to generated documentation file (in working directory)
@@ -102,7 +108,10 @@ class DocumentationGenerator:
                 ),
                 "system_message": {
                     "mode": "append",
-                    "content": self._build_incremental_system_prompt(str(doc_file))
+                    "content": self._build_incremental_system_prompt(
+                        str(doc_file),
+                        screenshots=screenshots
+                    )
                 }
             }
             
@@ -113,6 +122,17 @@ class DocumentationGenerator:
             business_section = ""
             if business_context:
                 business_section = f"\n\n**USER BUSINESS CONTEXT:**\n{business_context}\n"
+            
+            # Group screenshots by component path for per-file attachment
+            screenshots = screenshots or []
+            screenshots_by_component = {}
+            global_screenshots = []
+            for ss in screenshots:
+                cp = ss.get('component_path')
+                if cp:
+                    screenshots_by_component.setdefault(cp, []).append(ss)
+                else:
+                    global_screenshots.append(ss)
             
             # PASS 1: Analyze each file and directly edit relevant template sections
             for idx, (path, content) in enumerate(critical_files, 1):
@@ -137,9 +157,35 @@ class DocumentationGenerator:
                         business_section
                     )
                     
-                    # Send prompt - AI will directly edit the documentation file
+                    # Find screenshots associated with this file's component
+                    file_screenshots = []
+                    for comp_path, ss_list in screenshots_by_component.items():
+                        # Match if the component path is part of the file path
+                        if comp_path in path or path in comp_path:
+                            file_screenshots.extend(ss_list)
+                        # Also match by component stem (e.g., msapp stem matches _src folder)
+                        elif Path(comp_path).stem in path:
+                            file_screenshots.extend(ss_list)
+                    
+                    # Build attachments and screenshot context for prompt
+                    attachments = []
+                    if file_screenshots:
+                        screenshot_section = "\n\n**USER-PROVIDED SCREENSHOTS FOR THIS COMPONENT:**\n"
+                        for ss in file_screenshots:
+                            attachments.append({"type": "file", "path": ss['path']})
+                            screenshot_section += f"\n- **Screenshot:** {ss.get('context', 'No context provided')}\n"
+                            screenshot_section += f"  Embeddable markdown: `{ss['base64_markdown']}`\n"
+                        screenshot_section += "\n**INSTRUCTIONS:** Analyze each screenshot above. Place the embeddable markdown snippet in the most relevant documentation section (e.g., UI screenshots in '### 3.3 User Interface', flow screenshots in '### 3.4 Logic and Automation'). Add a descriptive caption below each image.\n"
+                        prompt += screenshot_section
+                    
+                    # Send prompt with optional image attachments
+                    send_payload = {"prompt": prompt}
+                    if attachments:
+                        send_payload["attachments"] = attachments
+                        logger.info(f"Attaching {len(attachments)} screenshot(s) for {path}")
+                    
                     result = await temp_session.send_and_wait(
-                        {"prompt": prompt},
+                        send_payload,
                         timeout=config.DOC_GEN_FILE_TIMEOUT
                     )
                     
@@ -172,11 +218,22 @@ class DocumentationGenerator:
                 len(critical_files),
                 critical_files,
                 non_critical_files,
-                working_directory
+                working_directory,
+                global_screenshots=global_screenshots
             )
             
+            # Build attachments for global screenshots
+            final_attachments = [
+                {"type": "file", "path": ss['path']} for ss in global_screenshots
+            ]
+            
+            final_payload = {"prompt": final_prompt}
+            if final_attachments:
+                final_payload["attachments"] = final_attachments
+                logger.info(f"Attaching {len(final_attachments)} global screenshot(s) for final pass")
+            
             result = await temp_session.send_and_wait(
-                {"prompt": final_prompt},
+                final_payload,
                 timeout=config.DOC_GEN_SECTION_TIMEOUT
             )
             
@@ -235,6 +292,74 @@ class DocumentationGenerator:
             "updated_at": datetime.now().isoformat()
         }
         logger.info(f"[{session_id}] Progress: {stage} - {current}/{total} - {message}")
+    
+    @staticmethod
+    def _image_to_base64_markdown(image_path: str, context: str, mime_type: str = None) -> str:
+        """Convert an image file to a base64-encoded markdown image tag.
+        
+        Returns: ![context](data:mime;base64,...) string ready for embedding in markdown.
+        """
+        path = Path(image_path)
+        if not path.exists():
+            logger.warning(f"Screenshot not found: {image_path}")
+            return f"*[Image not found: {context}]*"
+        
+        if mime_type is None:
+            ext = path.suffix.lower().lstrip('.')
+            mime_map = {'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+                        'gif': 'image/gif', 'webp': 'image/webp'}
+            mime_type = mime_map.get(ext, f'image/{ext}')
+        
+        raw = path.read_bytes()
+        b64 = base64.b64encode(raw).decode('ascii')
+        # Sanitize context for use in alt text (remove markdown special chars)
+        safe_context = context.replace('[', '(').replace(']', ')').replace('|', '-')
+        return f"![{safe_context}](data:{mime_type};base64,{b64})"
+    
+    @staticmethod
+    def _build_screenshot_system_instructions(screenshots: Optional[List[Dict[str, Any]]] = None) -> str:
+        """Build system prompt section about screenshot handling."""
+        if not screenshots:
+            return ""
+        
+        return f"""
+[IMAGE] **SCREENSHOT HANDLING INSTRUCTIONS:**
+
+The user has provided {len(screenshots)} screenshot(s) with context descriptions.
+You will receive these images as attachments in some prompts and their embeddable markdown snippets.
+
+**RULES FOR SCREENSHOTS:**
+1. **ANALYZE** each screenshot visually — identify UI elements, flow steps, outputs, etc.
+2. **USE THE ANALYSIS** to enhance the documentation with details you can see in the image
+3. **EMBED** the screenshot in the document by copying the provided base64 markdown snippet
+4. **PLACE** each image in the MOST RELEVANT section:
+   - App/screen screenshots → `### 3.3 User Interface` or `### 4.2 Features`
+   - Flow/automation screenshots → `### 3.4 Logic and Automation`
+   - Data/output screenshots → `### 2.2 Data Sources` or `### 8.2 Screenshots or Diagrams`
+   - General/overview screenshots → `## 1. Project Overview` or `### 8.2 Screenshots or Diagrams`
+5. **ADD A CAPTION** below each embedded image describing what it shows
+6. **DO NOT** modify the base64 data — copy the snippet exactly as provided
+"""
+    
+    @staticmethod
+    def _build_global_screenshots_prompt(global_screenshots: Optional[List[Dict[str, Any]]] = None) -> str:
+        """Build prompt section for global (non-component) screenshots in the final pass."""
+        if not global_screenshots:
+            return ""
+        
+        section = f"\n[IMAGE] **GLOBAL SCREENSHOTS TO EMBED ({len(global_screenshots)}):**\n\n"
+        section += "These screenshots are not tied to a specific component. Analyze each one and place it in the most relevant documentation section.\n\n"
+        for i, ss in enumerate(global_screenshots, 1):
+            context = ss.get('context', 'No context provided')
+            section += f"**Screenshot {i}:** {context}\n"
+            section += f"Embeddable markdown (copy exactly into the document):\n"
+            section += f"```\n{ss['base64_markdown']}\n```\n\n"
+        section += "**TASK:** For each screenshot above:\n"
+        section += "1. Analyze the attached image visually\n"
+        section += "2. Determine the best section for placement based on content and context\n"
+        section += "3. Use replace_string_in_file to insert the embeddable markdown at the right location\n"
+        section += "4. Add a descriptive caption below the image\n\n"
+        return section
     
     async def generate_documentation_consolidation(
         self,
@@ -544,7 +669,7 @@ Analyze the provided Power Platform components and generate clear, well-organize
 
 Be thorough but concise. Focus on business logic and important technical details."""
     
-    def _build_incremental_system_prompt(self, doc_file_path: str) -> str:
+    def _build_incremental_system_prompt(self, doc_file_path: str, screenshots: Optional[List[Dict[str, Any]]] = None) -> str:
         """Build system prompt for incremental template editing approach"""
         return f"""[!] CRITICAL: This is a FILE EDITING task, not a conversation.
 
@@ -629,6 +754,8 @@ For each file you analyze:
 - Include sufficient context in oldString (multi-line with before/after)
 - When appending to lists, read existing content first
 - Build documentation incrementally, file by file
+
+{self._build_screenshot_system_instructions(screenshots)}
 
 Be precise with edits. Use the tools to actually modify the documentation file."""
     
@@ -836,7 +963,8 @@ BEGIN WITH TOOL USAGE IMMEDIATELY - NO TEXT RESPONSES."""
         files_analyzed: int,
         critical_files: List[tuple],
         non_critical_files: List[tuple],
-        working_directory: Path
+        working_directory: Path,
+        global_screenshots: Optional[List[Dict[str, Any]]] = None
     ) -> str:
         """Build prompt for final formatting and gap-filling pass with exploration capability"""
         
@@ -986,6 +1114,8 @@ You've just analyzed {files_analyzed} Power Platform files and incrementally upd
 **OUTPUT:**
 
 Make all necessary edits to `{doc_file_path}` to produce a polished, complete, professional documentation file.
+
+{self._build_global_screenshots_prompt(global_screenshots)}
 
 Focus on:
 - **Completeness** (fill all fillable sections, explore additional files when needed)

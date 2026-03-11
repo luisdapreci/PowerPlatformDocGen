@@ -166,6 +166,87 @@
             display: none;
         }
 
+        .screenshot-upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 10px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #f8f9ff;
+        }
+
+        .screenshot-upload-area:hover {
+            background: #eef0ff;
+            border-color: #764ba2;
+        }
+
+        .screenshot-upload-area.dragging {
+            background: #e0e5ff;
+            border-color: #764ba2;
+        }
+
+        .screenshot-previews {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .screenshot-card {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 10px;
+            background: #fff;
+            position: relative;
+        }
+
+        .screenshot-card img {
+            width: 100%;
+            height: 140px;
+            object-fit: cover;
+            border-radius: 5px;
+        }
+
+        .screenshot-card .remove-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: rgba(220, 53, 69, 0.9);
+            color: #fff;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            font-size: 14px;
+            cursor: pointer;
+            line-height: 24px;
+            text-align: center;
+            padding: 0;
+        }
+
+        .screenshot-card input[type="text"] {
+            display: block;
+            width: 100%;
+            margin-top: 8px;
+            padding: 6px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            box-sizing: border-box;
+        }
+
+        .screenshot-card select {
+            display: block;
+            width: 100%;
+            margin-top: 6px;
+            padding: 5px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.82rem;
+            box-sizing: border-box;
+        }
+
         .btn {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -960,10 +1041,14 @@
                 </div>
                 <div class="step-item" data-step="3">
                     <div class="step-number">3</div>
-                    <div class="step-label">Generate Docs</div>
+                    <div class="step-label">Screenshots</div>
                 </div>
                 <div class="step-item" data-step="4">
                     <div class="step-number">4</div>
+                    <div class="step-label">Generate Docs</div>
+                </div>
+                <div class="step-item" data-step="5">
+                    <div class="step-number">5</div>
                     <div class="step-label">Edit & Download</div>
                 </div>
             </div>
@@ -1006,13 +1091,38 @@
 
                 <div class="button-group">
                     <button class="btn btn-secondary" onclick="goToStep(1)">← Back</button>
-                    <button class="btn" id="proceedBtn" onclick="selectComponents()" disabled>Proceed to Generate</button>
+                    <button class="btn" id="proceedBtn" onclick="selectComponents()" disabled>Proceed to Screenshots</button>
                 </div>
             </div>
 
-            <!-- Step 3: Generate Documentation -->
+            <!-- Step 3: Add Screenshots -->
             <div class="step" data-step="3">
-                <h2>Step 3: Generate Documentation</h2>
+                <h2>Step 3: Add Screenshots <span style="font-weight: normal; font-size: 0.9rem; color: #999;">(Optional)</span></h2>
+                <p style="color: #666; margin: 20px 0;">Upload screenshots of app screens, flows, outputs, etc. to enrich your documentation</p>
+                
+                <div class="screenshot-upload-area" id="screenshotUploadArea">
+                    <div class="upload-icon">📷</div>
+                    <div class="upload-text">Drag & Drop images here</div>
+                    <div class="upload-hint">PNG, JPG, GIF, WebP — Max 10MB each, up to 20 images</div>
+                    <input type="file" id="screenshotFileInput" accept="image/png,image/jpeg,image/gif,image/webp" multiple>
+                </div>
+
+                <div id="screenshotPreviews" class="screenshot-previews"></div>
+
+                <div id="screenshotSummary" style="text-align: center; margin: 15px 0; color: #666;"></div>
+
+                <div class="button-group">
+                    <button class="btn btn-secondary" onclick="goToStep(2)">← Back</button>
+                    <div>
+                        <button class="btn btn-secondary" onclick="skipScreenshots()" style="margin-right: 10px;">Skip →</button>
+                        <button class="btn" id="uploadScreenshotsBtn" onclick="uploadAndProceedScreenshots()" style="display: none;">Upload & Continue →</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 4: Generate Documentation -->
+            <div class="step" data-step="4">
+                <h2>Step 4: Generate Documentation</h2>
                 <p style="color: #666; margin: 20px 0;">Review your selection and generate documentation</p>
                 
                 <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 20px; margin: 20px 0;">
@@ -1045,9 +1155,9 @@
                 </div>
             </div>
 
-            <!-- Step 4: Edit & Download -->
-            <div class="step" data-step="4">
-                <h2>Step 4: Download Documentation</h2>
+            <!-- Step 5: Edit & Download -->
+            <div class="step" data-step="5">
+                <h2>Step 5: Download Documentation</h2>
                 <p style="color: #666; margin: 20px 0;">Your documentation has been generated successfully!</p>
                 
                 <div class="status success">
@@ -1124,6 +1234,7 @@
         let generatedFiles = [];
         let converterFile = null;
         let unpackingComplete = false;
+        let pendingScreenshots = []; // {file, context, componentPath}
 
         // Clean up session on page close/refresh.
         // navigator.sendBeacon (POST) is the most reliable on unload; fetch+keepalive is the fallback.
@@ -1306,8 +1417,8 @@
             
             currentStep = step;
 
-            // Show chat toggle only from step 3 onwards and only when unpacking is done
-            if (step >= 3 && unpackingComplete) {
+            // Show chat toggle only from step 4 onwards and only when unpacking is done
+            if (step >= 4 && unpackingComplete) {
                 document.getElementById('chatToggle').classList.add('show');
             } else {
                 document.getElementById('chatToggle').classList.remove('show');
@@ -1346,6 +1457,9 @@
                 handleFileUpload(e.target.files[0]);
             }
         });
+
+        // Initialize screenshot upload drag-and-drop
+        initScreenshotUpload();
 
         async function handleFileUpload(file) {
             if (!file.name.endsWith('.zip')) {
@@ -1643,7 +1757,7 @@
                         if (data.status === 'analyzing' || data.status === 'completed') {
                             // Unpacking is complete — record state and show toggle if already on step 3+
                             unpackingComplete = true;
-                            if (currentStep >= 3) {
+                            if (currentStep >= 4) {
                                 document.getElementById('chatToggle').classList.add('show');
                             }
                             
@@ -1684,7 +1798,7 @@
                 } else if (attempts >= maxAttempts) {
                     // Timeout — treat as complete so proceed is still possible
                     unpackingComplete = true;
-                    if (currentStep >= 3) {
+                    if (currentStep >= 4) {
                         document.getElementById('chatToggle').classList.add('show');
                     }
                     
@@ -1745,7 +1859,162 @@
             }
         }
 
-        // Step 3: Generate Documentation
+        // ==================== SCREENSHOT FUNCTIONS ====================
+
+        function initScreenshotUpload() {
+            const area = document.getElementById('screenshotUploadArea');
+            const fileInput = document.getElementById('screenshotFileInput');
+
+            area.addEventListener('click', () => fileInput.click());
+
+            area.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                area.classList.add('dragging');
+            });
+            area.addEventListener('dragleave', () => area.classList.remove('dragging'));
+            area.addEventListener('drop', (e) => {
+                e.preventDefault();
+                area.classList.remove('dragging');
+                handleScreenshotFiles(e.dataTransfer.files);
+            });
+
+            fileInput.addEventListener('change', () => {
+                handleScreenshotFiles(fileInput.files);
+                fileInput.value = '';
+            });
+        }
+
+        function handleScreenshotFiles(fileList) {
+            const maxTotal = 20;
+            for (const file of fileList) {
+                if (pendingScreenshots.length >= maxTotal) {
+                    alert(`Maximum ${maxTotal} screenshots allowed.`);
+                    break;
+                }
+                if (file.size > 10 * 1024 * 1024) {
+                    alert(`${file.name} exceeds 10 MB limit and was skipped.`);
+                    continue;
+                }
+                if (!file.type.match(/^image\/(png|jpeg|gif|webp)$/)) {
+                    alert(`${file.name} is not a supported image type and was skipped.`);
+                    continue;
+                }
+                pendingScreenshots.push({ file, context: '', componentPath: '' });
+            }
+            renderScreenshotPreviews();
+        }
+
+        function renderScreenshotPreviews() {
+            const container = document.getElementById('screenshotPreviews');
+            const summary = document.getElementById('screenshotSummary');
+            const uploadBtn = document.getElementById('uploadScreenshotsBtn');
+            container.innerHTML = '';
+
+            if (pendingScreenshots.length === 0) {
+                summary.textContent = '';
+                uploadBtn.style.display = 'none';
+                return;
+            }
+
+            summary.textContent = `${pendingScreenshots.length} image(s) ready to upload`;
+            uploadBtn.style.display = 'inline-block';
+
+            pendingScreenshots.forEach((item, idx) => {
+                const card = document.createElement('div');
+                card.className = 'screenshot-card';
+
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'remove-btn';
+                removeBtn.textContent = '×';
+                removeBtn.onclick = () => { pendingScreenshots.splice(idx, 1); renderScreenshotPreviews(); };
+
+                const img = document.createElement('img');
+                const reader = new FileReader();
+                reader.onload = (e) => { img.src = e.target.result; };
+                reader.readAsDataURL(item.file);
+
+                const ctxInput = document.createElement('input');
+                ctxInput.type = 'text';
+                ctxInput.placeholder = 'Describe this screenshot...';
+                ctxInput.value = item.context;
+                ctxInput.oninput = (e) => { pendingScreenshots[idx].context = e.target.value; };
+
+                const compSelect = document.createElement('select');
+                const globalOpt = document.createElement('option');
+                globalOpt.value = '';
+                globalOpt.textContent = '🌐 Global (all components)';
+                compSelect.appendChild(globalOpt);
+                selectedComponents.forEach(path => {
+                    const opt = document.createElement('option');
+                    opt.value = path;
+                    const name = path.split('/').pop() || path;
+                    opt.textContent = name;
+                    compSelect.appendChild(opt);
+                });
+                compSelect.value = item.componentPath;
+                compSelect.onchange = (e) => { pendingScreenshots[idx].componentPath = e.target.value; };
+
+                card.appendChild(removeBtn);
+                card.appendChild(img);
+                card.appendChild(ctxInput);
+                card.appendChild(compSelect);
+                container.appendChild(card);
+            });
+        }
+
+        function skipScreenshots() {
+            pendingScreenshots = [];
+            goToStep(4);
+        }
+
+        async function uploadAndProceedScreenshots() {
+            if (pendingScreenshots.length === 0) {
+                goToStep(4);
+                return;
+            }
+
+            const btn = document.getElementById('uploadScreenshotsBtn');
+            btn.disabled = true;
+            btn.textContent = 'Uploading...';
+
+            try {
+                const formData = new FormData();
+                const contexts = [];
+                const compPaths = [];
+
+                pendingScreenshots.forEach(item => {
+                    formData.append('files', item.file);
+                    contexts.push(item.context || '');
+                    compPaths.push(item.componentPath || '');
+                });
+
+                formData.append('contexts', JSON.stringify(contexts));
+                formData.append('component_paths', JSON.stringify(compPaths));
+
+                const response = await fetch(`/screenshots/${sessionId}`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.detail || 'Upload failed');
+                }
+
+                const result = await response.json();
+                document.getElementById('screenshotSummary').textContent =
+                    `✅ ${result.screenshots.length} screenshot(s) uploaded successfully`;
+                pendingScreenshots = [];
+                setTimeout(() => goToStep(4), 600);
+            } catch (error) {
+                alert('Screenshot upload failed: ' + error.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Upload & Continue →';
+            }
+        }
+
+        // Step 4: Generate Documentation
         async function generateDocumentation() {
             const generateBtn = document.getElementById('generateBtn');
             const generateStatus = document.getElementById('generateStatus');
@@ -1807,7 +2076,7 @@
                     showStatus(generateStatus, 'success', 'Documentation generated successfully!');
                     
                     setTimeout(() => {
-                        goToStep(4);
+                        goToStep(5);
                     }, 1500);
                 } else {
                     isGenerating = false;
@@ -1939,6 +2208,10 @@
                 selectedComponents = [];
                 generatedFiles = [];
                 unpackingComplete = false;
+                pendingScreenshots = [];
+                document.getElementById('screenshotPreviews').innerHTML = '';
+                document.getElementById('screenshotSummary').textContent = '';
+                document.getElementById('uploadScreenshotsBtn').style.display = 'none';
                 document.getElementById('fileInput').value = '';
 
                 // Close WebSocket

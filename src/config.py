@@ -16,6 +16,12 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100 MB
 MAX_EXTRACTION_SIZE = 500 * 1024 * 1024  # 500 MB
 
+# Screenshot/image settings
+MAX_SCREENSHOT_SIZE = 10 * 1024 * 1024  # 10 MB per image
+MAX_SCREENSHOTS_PER_SESSION = 20
+ALLOWED_IMAGE_TYPES = {'image/png', 'image/jpeg', 'image/gif', 'image/webp'}
+ALLOWED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
+
 # Session settings
 SESSION_TIMEOUT = 30 * 60  # 30 minutes in seconds
 MAX_CONCURRENT_SESSIONS = 10

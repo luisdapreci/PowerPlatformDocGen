@@ -92,6 +92,8 @@ Author:
 - **Screens and Navigation:**  
   List all screens with descriptions of purpose and functionality.
 
+  > *Place app screen screenshots here if provided.*
+
 - **Design Standards:**  
   UI consistency, themes, branding guidelines.
 
@@ -103,6 +105,8 @@ Author:
 - **Power Automate Flows:**
   - Automated workflows integrated with the app.
   - Trigger conditions and actions.
+
+  > *Place flow/automation screenshots here if provided.*
 
 ---
 
@@ -175,6 +179,8 @@ Author:
 ### 8.2 Screenshots or Diagrams
 
 - Visuals of screens, workflows, or architecture.
+
+> *Place any remaining screenshots or diagrams here.*
 
 ### 8.3 Custom Components or Code
 

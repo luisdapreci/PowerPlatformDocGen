@@ -38,8 +38,12 @@ def prepend_logo_to_markdown(content: str, logo_path: str, width_inches: float =
         ext = resolved.suffix.lower().lstrip('.')
         mime = 'image/png' if ext == 'png' else f'image/{ext}'
         data_uri = f'data:{mime};base64,{b64}'
-        # Pandoc supports {width=Xin} attribute on images for .docx sizing
-        logo_tag = f'![]({data_uri}){{width={width_inches}in}}'
+        # Wrap in a Pandoc fenced div mapped to Word's "Figure" style (centered by default)
+        logo_tag = (
+            f'::: {{custom-style="Figure"}}\n'
+            f'![]({data_uri}){{width={width_inches}in}}\n'
+            f':::'
+        )
         return logo_tag + '\n\n' + content
     except Exception as e:
         logger.warning(f"Failed to embed logo: {e}")

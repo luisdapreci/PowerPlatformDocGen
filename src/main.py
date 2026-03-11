@@ -1,5 +1,5 @@
 """FastAPI application for Power Platform Documentation Generator"""
-from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect, Body
+from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect, Body, Form
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,7 +26,10 @@ from models import (
     ComponentsListResponse,
     ComponentSelectionRequest,
     ComponentSelectionResponse,
-    GenerateDocsRequest
+    GenerateDocsRequest,
+    ScreenshotMetadata,
+    ScreenshotUploadResponse,
+    ScreenshotListResponse
 )
 from utils import (
     generate_session_id,
@@ -468,6 +471,193 @@ async def unpack_selected_components(session_id: str, selected_paths: List[str],
         
     except Exception as e:
         logger.exception(f"Error unpacking components for session {session_id}")
+
+
+# ==========================================
+# Screenshot/Image Management Endpoints
+# ==========================================
+
+def _get_screenshots_dir(session_id: str) -> Path:
+    """Get the screenshots directory for a session"""
+    return get_session_dir(session_id) / "screenshots"
+
+
+def _load_screenshot_metadata(session_id: str) -> List[ScreenshotMetadata]:
+    """Load screenshot metadata from session directory"""
+    meta_file = _get_screenshots_dir(session_id) / "metadata.json"
+    if not meta_file.exists():
+        return []
+    with open(meta_file, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    return [ScreenshotMetadata(**item) for item in data]
+
+
+def _save_screenshot_metadata(session_id: str, screenshots: List[ScreenshotMetadata]):
+    """Save screenshot metadata to session directory"""
+    meta_dir = _get_screenshots_dir(session_id)
+    meta_dir.mkdir(parents=True, exist_ok=True)
+    meta_file = meta_dir / "metadata.json"
+    with open(meta_file, 'w', encoding='utf-8') as f:
+        json.dump([s.model_dump(mode='json') for s in screenshots], f, indent=2, default=str)
+
+
+@app.post("/screenshots/{session_id}", response_model=ScreenshotUploadResponse)
+async def upload_screenshots(
+    session_id: str,
+    files: List[UploadFile] = File(...),
+    contexts: str = Form(default="[]"),
+    component_paths: str = Form(default="[]")
+):
+    """
+    Upload one or more screenshots with context descriptions.
+    
+    - files: Image files (png, jpg, jpeg, gif, webp)
+    - contexts: JSON array of context strings, one per file
+    - component_paths: JSON array of component paths (or null for global), one per file
+    """
+    session_dir = get_session_dir(session_id)
+    if not session_dir.exists():
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Parse JSON form fields
+    try:
+        context_list = json.loads(contexts)
+        component_path_list = json.loads(component_paths)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON in contexts or component_paths")
+    
+    # Validate lengths match
+    if len(context_list) != len(files):
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Number of contexts ({len(context_list)}) must match number of files ({len(files)})"
+        )
+    if len(component_path_list) != len(files):
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Number of component_paths ({len(component_path_list)}) must match number of files ({len(files)})"
+        )
+    
+    # Load existing screenshots
+    existing = _load_screenshot_metadata(session_id)
+    
+    # Check limits
+    if len(existing) + len(files) > config.MAX_SCREENSHOTS_PER_SESSION:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {config.MAX_SCREENSHOTS_PER_SESSION} screenshots per session. Currently have {len(existing)}."
+        )
+    
+    screenshots_dir = _get_screenshots_dir(session_id)
+    screenshots_dir.mkdir(parents=True, exist_ok=True)
+    new_screenshots = []
+    
+    for i, file in enumerate(files):
+        # Validate file extension
+        ext = Path(file.filename or "").suffix.lower()
+        if ext not in config.ALLOWED_IMAGE_EXTENSIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File '{file.filename}' has unsupported type '{ext}'. Allowed: {', '.join(config.ALLOWED_IMAGE_EXTENSIONS)}"
+            )
+        
+        # Validate content type
+        if file.content_type and file.content_type not in config.ALLOWED_IMAGE_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File '{file.filename}' has unsupported content type '{file.content_type}'"
+            )
+        
+        # Read and validate size
+        content = await file.read()
+        if len(content) > config.MAX_SCREENSHOT_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File '{file.filename}' exceeds maximum size of {config.MAX_SCREENSHOT_SIZE // (1024*1024)}MB"
+            )
+        
+        # Generate unique ID and save
+        screenshot_id = generate_session_id()
+        saved_filename = f"{screenshot_id}{ext}"
+        save_path = screenshots_dir / saved_filename
+        save_path.write_bytes(content)
+        
+        mime_type = file.content_type or f"image/{ext.lstrip('.')}"
+        component_path = component_path_list[i] if component_path_list[i] else None
+        
+        metadata = ScreenshotMetadata(
+            id=screenshot_id,
+            filename=saved_filename,
+            context=context_list[i] or "",
+            component_path=component_path,
+            mime_type=mime_type
+        )
+        new_screenshots.append(metadata)
+        logger.info(f"Saved screenshot {saved_filename} for session {session_id} (component: {component_path or 'global'})")
+    
+    # Merge with existing and save
+    all_screenshots = existing + new_screenshots
+    _save_screenshot_metadata(session_id, all_screenshots)
+    
+    return ScreenshotUploadResponse(
+        session_id=session_id,
+        screenshots=all_screenshots,
+        message=f"Uploaded {len(new_screenshots)} screenshot(s). Total: {len(all_screenshots)}"
+    )
+
+
+@app.get("/screenshots/{session_id}", response_model=ScreenshotListResponse)
+async def list_screenshots(session_id: str):
+    """List all screenshots for a session"""
+    session_dir = get_session_dir(session_id)
+    if not session_dir.exists():
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    screenshots = _load_screenshot_metadata(session_id)
+    return ScreenshotListResponse(session_id=session_id, screenshots=screenshots)
+
+
+@app.delete("/screenshots/{session_id}/{screenshot_id}")
+async def delete_screenshot(session_id: str, screenshot_id: str):
+    """Delete a specific screenshot"""
+    session_dir = get_session_dir(session_id)
+    if not session_dir.exists():
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    screenshots = _load_screenshot_metadata(session_id)
+    target = next((s for s in screenshots if s.id == screenshot_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+    
+    # Delete the image file
+    image_path = _get_screenshots_dir(session_id) / target.filename
+    if image_path.exists():
+        image_path.unlink()
+    
+    # Update metadata
+    screenshots = [s for s in screenshots if s.id != screenshot_id]
+    _save_screenshot_metadata(session_id, screenshots)
+    
+    return JSONResponse(content={"message": "Screenshot deleted", "remaining": len(screenshots)})
+
+
+@app.get("/screenshots/{session_id}/{screenshot_id}/image")
+async def get_screenshot_image(session_id: str, screenshot_id: str):
+    """Serve a screenshot image for preview"""
+    session_dir = get_session_dir(session_id)
+    if not session_dir.exists():
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    screenshots = _load_screenshot_metadata(session_id)
+    target = next((s for s in screenshots if s.id == screenshot_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+    
+    image_path = _get_screenshots_dir(session_id) / target.filename
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Image file not found")
+    
+    return FileResponse(path=image_path, media_type=target.mime_type)
 
 
 @app.get("/status/{session_id}", response_model=AnalysisProgress)
@@ -1185,6 +1375,25 @@ All components in the solution are included for documentation.
             # Get the dedicated documentation generator
             doc_gen = await get_doc_generator()
             
+            # Load screenshots if any
+            screenshot_data = []
+            screenshots_meta = _load_screenshot_metadata(session_id)
+            if screenshots_meta:
+                screenshots_dir = _get_screenshots_dir(session_id)
+                for ss in screenshots_meta:
+                    image_path = str(screenshots_dir / ss.filename)
+                    b64_md = doc_gen._image_to_base64_markdown(
+                        image_path, ss.context, ss.mime_type
+                    )
+                    screenshot_data.append({
+                        'path': image_path,
+                        'context': ss.context,
+                        'component_path': ss.component_path,
+                        'mime_type': ss.mime_type,
+                        'base64_markdown': b64_md
+                    })
+                logger.info(f"Loaded {len(screenshot_data)} screenshot(s) for documentation generation")
+            
             # Generate documentation using incremental template editing
             copilot_documentation = await doc_gen.generate_documentation(
                 session_id=session_id,
@@ -1193,7 +1402,8 @@ All components in the solution are included for documentation.
                 non_critical_files=non_critical_files,
                 template_path=template_path,  # Pass path instead of content
                 selection_context=selection_context,
-                business_context=business_context or ""
+                business_context=business_context or "",
+                screenshots=screenshot_data if screenshot_data else None
             )
             
             logger.info(f"✓ Documentation generation complete: {len(copilot_documentation)} characters")
@@ -1382,7 +1592,7 @@ async def convert_markdown_to_docx(file: UploadFile = File(...)):
         docx_path = conversion_dir / docx_filename
         
         # Inject logo unless the file already contains one (e.g. previously generated .md)
-        if not markdown_content.lstrip().startswith('![](data:image'):
+        if 'data:image' not in markdown_content[:500]:
             markdown_content = prepend_logo_to_markdown(
                 markdown_content,
                 config.DOCX_CONFIG.get('logo_path', ''),

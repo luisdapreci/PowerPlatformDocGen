@@ -111,3 +111,26 @@ class GenerateDocsRequest(BaseModel):
     solution_name: Optional[str] = None
     project_description: Optional[str] = None
     business_context: Optional[str] = Field(None, description="Optional business context to guide documentation generation")
+
+
+class ScreenshotMetadata(BaseModel):
+    """Metadata for an uploaded screenshot"""
+    id: str
+    filename: str
+    context: str = Field(description="User-provided description/context for this screenshot")
+    component_path: Optional[str] = Field(None, description="Associated component path, or null for global")
+    mime_type: str
+    uploaded_at: datetime = Field(default_factory=datetime.now)
+
+
+class ScreenshotUploadResponse(BaseModel):
+    """Response after screenshot upload"""
+    session_id: str
+    screenshots: List[ScreenshotMetadata]
+    message: str
+
+
+class ScreenshotListResponse(BaseModel):
+    """Response listing all screenshots for a session"""
+    session_id: str
+    screenshots: List[ScreenshotMetadata]
