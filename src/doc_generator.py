@@ -108,7 +108,11 @@ class DocumentationGenerator:
             # This includes: read_file, write_file, replace_string_in_file, list_dir, grep_search, etc.
             session_config = {
                 "model": config.COPILOT_MODEL,
-                "working_directory": str(working_directory),
+                # Use parent of extracted/ so screenshots/ sibling dir is within working_directory.
+                # Copilot CLI restricts file access to working_directory; screenshots are at
+                # temp/{session_id}/screenshots/ while extracted/ is a sibling — using the parent
+                # makes both accessible for image attachments and doc file writes.
+                "working_directory": str(working_directory.parent),
                 "streaming": False,
                 # NOTE: Do NOT specify available_tools - that RESTRICTS tools, not enables them!
                 # By omitting it, ALL built-in file operation tools are available.
@@ -525,14 +529,14 @@ Do not just embed images — describe what you see in them to create thorough do
         context = screenshot.get('context', 'Screenshot')
         img_path = screenshot.get('path', '')
 
-        # Build the embed block
-        embed_block = f"\n#### Screenshot {screenshot_index}: {context}\n\n"
+        # Build the embed block — no sub-heading, inline with existing section prose
+        embed_block = "\n"
         if ai_description and len(ai_description.strip()) > 50:
             desc = ai_description.strip()[:800]
             if len(ai_description.strip()) > 800:
                 desc += "..."
             embed_block += f"{desc}\n\n"
-        embed_block += f"![{context}]({img_path})\n\n"
+        embed_block += f"![{context}]({img_path})\n"
         embed_block += f"*Figure {screenshot_index}: {context}*\n"
 
         doc_content = doc_file.read_text(encoding='utf-8')
@@ -619,7 +623,7 @@ Your ONLY valid response is tool calls: read_file, replace_string_in_file, multi
 YOUR FIRST ACTION MUST BE:
 read_file(filePath="{doc_file_path}", startLine=1, endLine=200)
 
-After reading, immediately use replace_string_in_file to insert your visual analysis + image embed.
+Read additional ranges as needed to see the full content of the target section before editing.
 
 ---
 
@@ -636,8 +640,8 @@ After reading, immediately use replace_string_in_file to insert your visual anal
 
 [TOOL] **YOUR TASK:**
 
-1. **Read** the current documentation file with `read_file` to find the best target section.
-   Read more ranges if needed to find the right location.
+1. **Read** the current documentation file to find and read the full text of the best target section.
+   Read additional line ranges until you have seen all existing content in that section.
 
 2. **Analyze** the attached screenshot image with your vision and extract:
    - UI Layout: screen structure, navigation, headers, sidebars
@@ -647,29 +651,29 @@ After reading, immediately use replace_string_in_file to insert your visual anal
    - Color Scheme & Branding: primary colors, logos, styling
    - Business Context: what business process does this illustrate?
 
-3. **Edit** the documentation file using `replace_string_in_file` to:
-   - Find the target section (use the hints above)
-   - **Append** a detailed written description of what you see in the image
-   - Embed the image: `![{context}]({screenshot.get('path', '')})`
-   - Add a caption: `*Figure {screenshot_index}: <detailed description>*`
-   - Do NOT remove existing content — append after it
+3. **Edit** the section by EXPANDING ITS EXISTING PROSE with what you learned from the image:
+   - Weave new sentences into the existing paragraphs — or append new sentences at the end of the section
+   - Place the image embed `![{context}]({screenshot.get('path', '')})` inline, directly after the paragraph it illustrates
+   - Add a brief caption on the next line: `*Figure {screenshot_index}: <what the image shows>*`
+   - The result should read as one continuous, natural narrative — NOT as a separate block or sub-heading
 
 ---
 
 [EDIT] **EDITING GUIDELINES:**
 
 [OK] **DO:**
-- Use read_file first to see current doc state and pick the best section
-- Write a thorough description of what the image shows (UI, controls, data, flow steps)
-- Embed the image and caption directly adjacent to the description
-- Append to existing section content — don't overwrite other entries
-- Use replace_string_in_file for all edits (include 3-5 lines of context before/after)
+- Expand existing paragraph text with observations from the image (UI elements, flow steps, data shown)
+- Place `![{context}]({screenshot.get('path', '')})` immediately after the paragraph it supports
+- Use `replace_string_in_file` — include 3-5 lines of unchanged context before/after
+- Read multiple line ranges to see the full section before editing
 
 [STOP] **DON'T:**
-- Don't write any text response — only tool calls
-- Don't put everything in Section 8.2 — find the best section first
+- **DON'T create a new sub-heading** like `#### Screenshot N:` or `#### Figure N:` — images live inline within sections
+- **DON'T append a standalone block** at the end of the file — edit the most relevant existing section
+- Don't put everything in Section 8.2 — expand the best-fit section with the visual detail
 - Don't skip the image embed — `![{context}]({screenshot.get('path', '')})` must appear in the doc
 - Don't duplicate content already in the doc
+- Don't write text responses — only tool calls
 
 NO TEXT RESPONSES — ONLY TOOL CALLS."""
 
