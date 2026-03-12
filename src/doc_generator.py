@@ -75,7 +75,18 @@ class DocumentationGenerator:
         
         # Calculate total screenshot passes (computed after grouping below)
         num_screenshots = len(screenshots) if screenshots else 0
-        total_steps = len(critical_files) + num_screenshots + 2  # Files + screenshot passes + final formatting
+        
+        # Define documentation sections for dedicated per-section passes
+        doc_sections = [
+            ("frontmatter", "Frontmatter & Project Info"),
+            ("overview", "Project Overview"),
+            ("technical_specs", "Technical Specifications"),
+            ("development", "Development Details"),
+            ("usage", "Usage Instructions"),
+            ("maintenance", "Troubleshooting, Maintenance & Roadmap"),
+            ("appendices", "Appendices & Table of Contents"),
+        ]
+        total_steps = len(critical_files) + num_screenshots + len(doc_sections)
         
         try:
             self._update_progress(
@@ -154,6 +165,9 @@ class DocumentationGenerator:
                     
                     logger.info(f"Pass {idx}/{len(critical_files)}: Analyzing {path} and editing template...")
                     
+                    # Snapshot doc before this pass
+                    _before_lines = doc_file.read_text(encoding='utf-8').splitlines()
+                    
                     prompt = self._build_incremental_file_prompt(
                         path,
                         content,
@@ -172,11 +186,12 @@ class DocumentationGenerator:
                         timeout=config.DOC_GEN_FILE_TIMEOUT
                     )
                     
-                    if result and hasattr(result, 'data') and hasattr(result.data, 'content'):
-                        response = result.data.content
-                        logger.info(f"✓ Pass {idx} complete: {len(response)} chars response")
-                    else:
-                        logger.warning(f"No response for {path}")
+                    # Compute line diff after pass
+                    _after_lines = doc_file.read_text(encoding='utf-8').splitlines()
+                    _added = max(0, len(_after_lines) - len(_before_lines))
+                    _removed = max(0, len(_before_lines) - len(_after_lines))
+                    _changed = sum(1 for a, b in zip(_before_lines, _after_lines) if a != b)
+                    logger.info(f"✓ Pass {idx} complete: +{_added} -{_removed} lines, {_changed} lines changed")
                 
                 except asyncio.TimeoutError:
                     logger.error(f"Timeout analyzing {path}")
@@ -272,61 +287,54 @@ class DocumentationGenerator:
                 except Exception as e:
                     logger.error(f"Error on global screenshot pass {screenshot_step}: {e}")
             
-            # FINAL PASS: Formatting and gap-filling (no screenshot handling)
-            self._update_progress(
-                session_id,
-                "formatting",
-                total_steps - 1,
-                total_steps,
-                "Final formatting and integration"
-            )
+            # SECTION-BY-SECTION PASSES: Dedicated pass for each documentation section
+            base_step = len(critical_files) + screenshot_step
             
-            logger.info("Final pass: Formatting and filling gaps...")
+            logger.info(f"Starting {len(doc_sections)} dedicated section passes...")
             
-            all_screenshots = screenshots or []
-            final_prompt = self._build_incremental_final_prompt(
-                str(doc_file),
-                selection_context,
-                business_section,
-                len(critical_files),
-                critical_files,
-                non_critical_files,
-                working_directory,
-                global_screenshots=None,  # Screenshots already handled in dedicated passes
-                all_screenshots=None      # No verification needed — each got its own pass
-            )
-            
-            # No screenshot attachments in final pass — they were all handled individually
-            final_payload = {"prompt": final_prompt}
-            
-            try:
-                result = await temp_session.send_and_wait(
-                    final_payload,
-                    timeout=config.DOC_GEN_FINAL_PASS_TIMEOUT
-                )
-                
-                if result and hasattr(result, 'data') and hasattr(result.data, 'content'):
-                    logger.info(f"✓ Final formatting complete")
-            except (TimeoutError, asyncio.TimeoutError):
-                logger.warning("Final pass timed out, retrying with simplified prompt...")
-                retry_prompt = (
-                    f"The previous formatting pass timed out. Please quickly finish editing "
-                    f"`{doc_file}`. Focus ONLY on:\n"
-                    f"1. Read the file with read_file\n"
-                    f"2. Fill any remaining placeholder text in the frontmatter (project name, date, purpose)\n"
-                    f"3. Generate a Table of Contents if missing\n"
-                    f"4. Replace any remaining template placeholders with '*Not available*'\n"
-                    f"Do NOT explore additional files. Make minimal edits and finish quickly."
-                )
+            for sec_idx, (section_id, section_name) in enumerate(doc_sections, 1):
                 try:
+                    self._update_progress(
+                        session_id,
+                        "section_generation",
+                        base_step + sec_idx,
+                        total_steps,
+                        f"Generating: {section_name}"
+                    )
+                    
+                    logger.info(f"Section pass {sec_idx}/{len(doc_sections)}: {section_name}...")
+                    
+                    # Snapshot doc before this section pass
+                    _before_lines = doc_file.read_text(encoding='utf-8').splitlines()
+                    
+                    section_prompt = self._build_section_editing_prompt(
+                        section_id=section_id,
+                        section_name=section_name,
+                        doc_file_path=str(doc_file),
+                        selection_context=selection_context,
+                        business_section=business_section,
+                        files_analyzed=len(critical_files),
+                        critical_files=critical_files,
+                        non_critical_files=non_critical_files,
+                        working_directory=working_directory,
+                    )
+                    
                     result = await temp_session.send_and_wait(
-                        {"prompt": retry_prompt},
+                        {"prompt": section_prompt},
                         timeout=config.DOC_GEN_SECTION_TIMEOUT
                     )
-                    if result and hasattr(result, 'data') and hasattr(result.data, 'content'):
-                        logger.info("✓ Final formatting complete (retry)")
-                except (TimeoutError, asyncio.TimeoutError):
-                    logger.warning("Final pass retry also timed out, proceeding with current documentation state")
+                    
+                    # Compute line diff after section pass
+                    _after_lines = doc_file.read_text(encoding='utf-8').splitlines()
+                    _added = max(0, len(_after_lines) - len(_before_lines))
+                    _removed = max(0, len(_before_lines) - len(_after_lines))
+                    _changed = sum(1 for a, b in zip(_before_lines, _after_lines) if a != b)
+                    logger.info(f"✓ Section '{section_id}' complete: +{_added} -{_removed} lines, {_changed} lines changed")
+                
+                except asyncio.TimeoutError:
+                    logger.error(f"Timeout generating section '{section_id}', continuing...")
+                except Exception as e:
+                    logger.error(f"Error generating section '{section_id}': {e}")
             
             # Read the final documentation
             documentation = doc_file.read_text(encoding='utf-8')
@@ -1405,6 +1413,260 @@ Step 7: replace_string_in_file to fill any remaining gaps
 
 BEGIN WITH TOOL CALLS IMMEDIATELY - NO CONVERSATIONAL TEXT."""
     
+    def _build_section_editing_prompt(
+        self,
+        section_id: str,
+        section_name: str,
+        doc_file_path: str,
+        selection_context: str,
+        business_section: str,
+        files_analyzed: int,
+        critical_files: List[tuple],
+        non_critical_files: List[tuple],
+        working_directory: Path,
+    ) -> str:
+        """Build a focused prompt for editing one specific documentation section."""
+        
+        # Build file inventory (only for sections that benefit from exploration)
+        files_inventory = ""
+        if section_id in ("technical_specs", "development", "overview"):
+            files_inventory = self._build_files_inventory(
+                critical_files, non_critical_files, working_directory
+            )
+        
+        section_instructions = {
+            "frontmatter": f"""[TARGET] **SECTION: Frontmatter & Project Information**
+
+Edit the top of `{doc_file_path}` to fill in:
+
+1. **Project Name** — extract from manifest data already in the doc, or from app metadata
+2. **Version** — use version from manifest or "1.0.0"
+3. **Last Updated** — today's date
+4. **Author(s)** — "Auto-generated Documentation"
+5. **Status** — "Documented"
+6. **Purpose** — synthesize a 1-2 sentence purpose from components analyzed and business context
+
+Read the file first to find manifest/app data already written by earlier passes.
+Only edit the `## Project Information` block — do NOT touch other sections.""",
+
+            "overview": f"""[TARGET] **SECTION 1: Project Overview**
+
+Edit `{doc_file_path}` to fill Section 1 — Project Overview:
+
+1. Read the current doc to see what components/screens/flows were documented
+2. Write 2-3 paragraphs in `## 1. Project Overview` synthesizing:
+   - What this Power Platform app does (high-level)
+   - Main business purposes and goals
+   - Key capabilities identified in earlier passes
+3. Fill the sub-fields:
+   - **Description:** 1-2 sentence summary
+   - **Objectives:** Main goals from components and business context
+   - **Scope:** Count screens, flows, data sources from what's in the doc
+   - **Target Audience:** If identifiable, otherwise "End users"
+   - **Stakeholders:** If identifiable, otherwise placeholder
+
+{business_section}
+
+Only edit Section 1 — do NOT touch other sections.""",
+
+            "technical_specs": f"""[TARGET] **SECTION 2: Technical Specifications (2.1, 2.2, 2.3)**
+
+Edit `{doc_file_path}` to complete Section 2 — Technical Specifications:
+
+1. **Read the current doc** to see what's already filled from per-file passes
+2. **EXPLORE additional files** to enrich data sources and connections:
+{files_inventory}
+3. Fill/update these subsections:
+   - **2.1 Platform Overview:** App type, environment, integrations
+   - **2.2 Data Sources:** Explore DataSource/Connection files listed above to find:
+     * All data connections (SharePoint, SQL, APIs, Dataverse)
+     * Connection authentication (OAuth, service principal)
+     * Data security and permissions
+   - **2.3 Technology Stack:** Components, custom code, expressions count
+
+Use `read_file` to explore the additional files above when helpful.
+Use `replace_string_in_file` to update Section 2.
+
+Only edit Section 2 — do NOT touch other sections.""",
+
+            "development": f"""[TARGET] **SECTION 3: Development Details (3.1, 3.2, 3.3, 3.4)**
+
+Edit `{doc_file_path}` to gap-fill Section 3 — Development Details:
+
+1. **Read the current doc** — per-file passes already populated much of Section 3
+2. **Fill gaps** in these subsections:
+   - **3.1 Application Setup:** Environment requirements, setup instructions
+   - **3.2 Data Connections:** Connector configs, security settings (explore Connection files if needed)
+   - **3.3 User Interface:** Ensure all screens listed, add navigation flow summary
+   - **3.4 Logic and Automation:** Ensure all formulas and flows complete
+3. **De-duplicate** — if the same screen or formula appears twice, merge entries
+4. Remove any remaining placeholder text that should have real data
+
+{files_inventory}
+
+Only edit Section 3 — do NOT touch other sections.""",
+
+            "usage": f"""[TARGET] **SECTION 4: Usage Instructions**
+
+Edit `{doc_file_path}` to fill Section 4 — Usage Instructions:
+
+1. **Read the current doc** to understand what screens/features exist
+2. Fill these subsections:
+   - **4.1 How to Access the App:** URL or access method, device compatibility
+   - **4.2 Features:** List 3-5 key features based on documented screens and flows
+   - **4.3 User Roles:** Role-based permissions if identifiable, otherwise standard placeholder
+
+Base feature descriptions on the screens and logic already documented in Section 3.
+
+Only edit Section 4 — do NOT touch other sections.""",
+
+            "maintenance": f"""[TARGET] **SECTIONS 5, 6, 7: Troubleshooting, Maintenance, Roadmap**
+
+Edit `{doc_file_path}` to fill Sections 5-7:
+
+1. **Section 5 — Troubleshooting and FAQs:**
+   - 5.1 Common Issues: Add relevant items if error handling was found in code, otherwise placeholder
+   - 5.2 Error Messages: Document any error handling patterns found in the analyses
+   - 5.3 Support Contact: Standard placeholder
+
+2. **Section 6 — Maintenance:**
+   - 6.1 Scheduled Updates: Placeholder
+   - 6.2 Version Control: Include version if found in manifest
+   - 6.3 Backup Strategy: Standard recommendation
+   - 6.4 Performance Monitoring: Standard recommendation
+
+3. **Section 7 — Roadmap:**
+   - Placeholder for future enhancements
+
+Replace template placeholder text with specific or standard text. Don't leave raw template instructions.
+
+Only edit Sections 5-7 — do NOT touch other sections.""",
+
+            "appendices": f"""[TARGET] **SECTION 8: Appendices + Table of Contents**
+
+Edit `{doc_file_path}` to complete Section 8 and add Table of Contents:
+
+**Part A — Section 8 Appendices:**
+1. **8.1 Glossary:** Add definitions for technical terms found in the documentation
+   (Power Fx, Canvas App, Power Automate, Dataverse, plus any domain-specific terms)
+2. **8.2 Screenshots or Diagrams:** If screenshots were embedded earlier, leave as-is.
+   Otherwise: "*Visual documentation available upon request.*"
+3. **8.3 Custom Components or Code:** List any custom components found, or placeholder
+
+**Part B — Table of Contents:**
+
+Read the full document to identify all section headers present, then generate a
+Table of Contents in the `## Table of Contents` section with markdown links:
+
+```
+## Table of Contents
+
+1. [Project Overview](#1-project-overview)
+2. [Technical Specifications](#2-technical-specifications)
+   - [2.1 Platform Overview](#21-platform-overview)
+   - [2.2 Data Sources](#22-data-sources)
+   - [2.3 Technology Stack](#23-technology-stack)
+3. [Development Details](#3-development-details)
+   ...etc based on actual sections present
+```
+
+**Part C — Final cleanup:**
+- Replace any remaining raw template instructions with actual content or "*Not available*"
+- Remove any duplicate entries
+- Ensure consistent markdown formatting
+
+Edit Sections 8, Table of Contents, and do final cleanup only.""",
+        }
+        
+        instruction = section_instructions.get(section_id, f"Complete the {section_name} section of the documentation.")
+        
+        return f"""[!] CRITICAL: SECTION EDITING TASK — USE TOOLS ONLY
+
+DO NOT write text. USE read_file and replace_string_in_file to edit `{doc_file_path}`.
+
+---
+
+{selection_context}
+
+**DOCUMENTATION FILE:** `{doc_file_path}`
+**You have analyzed {files_analyzed} files in previous passes.**
+
+---
+
+{instruction}
+
+---
+
+[EDIT] **GUIDELINES:**
+
+[OK] **DO:**
+- Read the file first with read_file to see current state
+- Use replace_string_in_file for precise edits
+- Include 3-5 lines of context in oldString for accurate matching
+- Preserve content from other sections
+
+[STOP] **DON'T:**
+- Don't write conversational text — only use tools
+- Don't edit sections outside your assigned scope
+- Don't remove content added by earlier passes
+- Don't rewrite the entire file
+
+[START] **BEGIN IMMEDIATELY WITH TOOL CALLS.**"""
+
+    def _build_files_inventory(
+        self,
+        critical_files: List[tuple],
+        non_critical_files: List[tuple],
+        working_directory: Path,
+    ) -> str:
+        """Build a file inventory string for section prompts that need file exploration."""
+        inventory = "\n**Additional Files Available for Exploration:**\n"
+        
+        if not non_critical_files:
+            inventory += "  (No additional files available)\n"
+            return inventory
+        
+        data_sources = []
+        connections = []
+        other_files = []
+        
+        for path, _ in non_critical_files:
+            rel_path = Path(path).relative_to(working_directory) if Path(path).is_absolute() else Path(path)
+            path_str = str(rel_path)
+            
+            if 'DataSources' in path_str or 'datasource' in path_str.lower():
+                data_sources.append(rel_path)
+            elif 'Connections' in path_str or 'connection' in path_str.lower():
+                connections.append(rel_path)
+            else:
+                other_files.append(rel_path)
+        
+        if data_sources:
+            inventory += "\n  **Data Sources:**\n"
+            for f in data_sources[:10]:
+                inventory += f"    - {f}\n"
+            if len(data_sources) > 10:
+                inventory += f"    ... and {len(data_sources) - 10} more\n"
+        
+        if connections:
+            inventory += "\n  **Connections:**\n"
+            for f in connections[:10]:
+                inventory += f"    - {f}\n"
+            if len(connections) > 10:
+                inventory += f"    ... and {len(connections) - 10} more\n"
+        
+        if other_files:
+            inventory += "\n  **Other Supporting Files:**\n"
+            for f in other_files[:15]:
+                inventory += f"    - {f}\n"
+            if len(other_files) > 15:
+                inventory += f"    ... and {len(other_files) - 15} more\n"
+        
+        inventory += f"\n**Working Directory:** `{working_directory}`\n"
+        inventory += "**Tools:** read_file, grep_search, list_dir available for exploration.\n"
+        
+        return inventory
+
     def _build_critical_file_prompt(self, path, content, idx, total, template_content, selection_context):
         return f"""You are analyzing Power Platform files for structured documentation.
 
