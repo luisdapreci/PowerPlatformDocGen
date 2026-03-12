@@ -701,25 +701,41 @@
         .chat-input-container {
             display: flex;
             gap: 10px;
+            align-items: flex-end;
         }
 
         .chat-input {
             flex: 1;
-            padding: 12px 16px;
+            padding: 10px 14px;
             border: 2px solid #e0e0e0;
-            border-radius: 25px;
+            border-radius: 12px;
             font-size: 0.95rem;
+            font-family: inherit;
             outline: none;
             transition: border-color 0.2s;
+            resize: none;
+            overflow-y: hidden;
+            min-height: 45px;
+            max-height: 160px;
+            line-height: 1.5;
+            display: block;
         }
 
         .chat-input:focus {
             border-color: #667eea;
         }
 
+        .chat-input-hint {
+            font-size: 0.75rem;
+            color: #999;
+            margin-top: 5px;
+            text-align: right;
+        }
+
         .chat-send-btn {
             width: 45px;
             height: 45px;
+            flex-shrink: 0;
             background: #667eea;
             border: none;
             border-radius: 50%;
@@ -1212,15 +1228,17 @@
             </div>
             <div class="chat-input-area">
                 <div class="chat-input-container">
-                    <input 
-                        type="text" 
+                    <textarea 
                         class="chat-input" 
                         id="chatInput" 
                         placeholder="Ask me anything about your solution..."
-                        onkeypress="handleChatKeyPress(event)"
-                    >
+                        rows="1"
+                        onkeydown="handleChatKeyDown(event)"
+                        oninput="autoResizeChatInput(this)"
+                    ></textarea>
                     <button class="chat-send-btn" id="chatSendBtn" onclick="sendChatMessage()">➤</button>
                 </div>
+                <div class="chat-input-hint">Enter to send &nbsp;·&nbsp; Shift+Enter for new line</div>
             </div>
         </div>
     </div>
@@ -1235,6 +1253,7 @@
         let converterFile = null;
         let unpackingComplete = false;
         let pendingScreenshots = []; // {file, context, componentPath}
+        let appScreens = []; // [{path, display_name, type, app_path}] — populated after unpack
 
         // Clean up session on page close/refresh.
         // navigator.sendBeacon (POST) is the most reliable on unload; fetch+keepalive is the fallback.
@@ -1663,6 +1682,11 @@
                 return;
             }
 
+            // Disable the proceed button while unpacking
+            const proceedBtn = document.getElementById('proceedBtn');
+            proceedBtn.disabled = true;
+            proceedBtn.textContent = '⏳ Unpacking...';
+
             try {
                 const response = await fetch('/select-components', {
                     method: 'POST',
@@ -1678,25 +1702,62 @@
                 const data = await response.json();
 
                 if (response.ok) {
-                    // Update the summary in step 3
+                    // Update the summary in step 4
                     updateSelectedFilesSummary();
+
+                    // Wait for unpacking to complete BEFORE going to the screenshots step,
+                    // so we can offer per-screen assignment in the dropdown.
+                    await waitForUnpackingComplete();
+
+                    // Fetch the per-screen list from the newly unpacked apps
+                    await fetchAppScreens();
+
+                    // Now move to screenshots step
                     goToStep(3);
-                    
-                    // Disable generate button during unpacking
-                    const generateBtn = document.getElementById('generateBtn');
-                    const generateStatus = document.getElementById('generateStatus');
-                    generateBtn.disabled = true;
-                    generateBtn.style.opacity = '0.6';
-                    generateBtn.style.cursor = 'not-allowed';
-                    showStatus(generateStatus, 'info', '⏳ Unpacking components... Please wait.');
-                    
-                    // Start polling for unpacking completion
-                    pollUnpackingStatus();
                 } else {
                     alert('Failed to process selection: ' + (data.detail || 'Unknown error'));
                 }
             } catch (error) {
                 alert('Error: ' + error.message);
+            } finally {
+                proceedBtn.disabled = false;
+                proceedBtn.textContent = 'Proceed to Screenshots';
+            }
+        }
+
+        async function waitForUnpackingComplete() {
+            const maxAttempts = 60; // up to 2 minutes (60 × 2s)
+            for (let i = 0; i < maxAttempts; i++) {
+                try {
+                    const response = await fetch(`/status/${sessionId}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.status === 'analyzing' || data.status === 'completed') {
+                            unpackingComplete = true;
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error checking unpack status:', e);
+                }
+                await new Promise(r => setTimeout(r, 2000));
+            }
+            // Timed out — allow proceeding anyway
+            unpackingComplete = true;
+            console.warn('Unpacking status polling timed out, proceeding.');
+        }
+
+        async function fetchAppScreens() {
+            try {
+                const response = await fetch(`/app-screens/${sessionId}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    appScreens = data.screens || [];
+                    console.log(`Fetched ${appScreens.length} screen-level targets for screenshot assignment`);
+                }
+            } catch (e) {
+                console.error('Error fetching app screens:', e);
+                appScreens = [];
             }
         }
 
@@ -1745,77 +1806,12 @@
         }
 
         // Poll for unpacking completion and show chat when ready
+        // NOTE: No longer called from selectComponents() — unpacking is now awaited
+        // before entering the screenshots step. Kept as a fallback if needed.
         async function pollUnpackingStatus() {
-            const checkStatus = async () => {
-                try {
-                    const response = await fetch(`/status/${sessionId}`);
-                    if (response.ok) {
-                        const data = await response.json();
-                        
-                        // Check if Copilot session is ready (unpacking complete)
-                        // The backend creates the Copilot session after unpacking
-                        if (data.status === 'analyzing' || data.status === 'completed') {
-                            // Unpacking is complete — record state and show toggle if already on step 3+
-                            unpackingComplete = true;
-                            if (currentStep >= 4) {
-                                document.getElementById('chatToggle').classList.add('show');
-                            }
-                            
-                            // Enable generate documentation button
-                            const generateBtn = document.getElementById('generateBtn');
-                            const generateStatus = document.getElementById('generateStatus');
-                            generateBtn.disabled = false;
-                            generateBtn.style.opacity = '1';
-                            generateBtn.style.cursor = 'pointer';
-                            
-                            // Show notification
-                            showStatus(generateStatus, 'success', '✅ Components unpacked! Ready to generate documentation.');
-                            setTimeout(() => {
-                                generateStatus.innerHTML = '';
-                                generateStatus.style.display = 'none';
-                            }, 3000);
-                            
-                            return true; // Stop polling
-                        }
-                    }
-                    return false; // Continue polling
-                } catch (error) {
-                    console.error('Error checking unpacking status:', error);
-                    return false;
-                }
-            };
-            
-            // Poll every 2 seconds, max 30 seconds
-            let attempts = 0;
-            const maxAttempts = 15;
-            
-            const poll = async () => {
-                const done = await checkStatus();
-                attempts++;
-                
-                if (!done && attempts < maxAttempts) {
-                    setTimeout(poll, 2000);
-                } else if (attempts >= maxAttempts) {
-                    // Timeout — treat as complete so proceed is still possible
-                    unpackingComplete = true;
-                    if (currentStep >= 4) {
-                        document.getElementById('chatToggle').classList.add('show');
-                    }
-                    
-                    // Enable button even if polling times out
-                    const generateBtn = document.getElementById('generateBtn');
-                    const generateStatus = document.getElementById('generateStatus');
-                    generateBtn.disabled = false;
-                    generateBtn.style.opacity = '1';
-                    generateBtn.style.cursor = 'pointer';
-                    showStatus(generateStatus, 'warning', '⚠️ Unpacking status unknown. You can proceed with caution.');
-                    
-                    console.warn('Unpacking status polling timed out, enabling chat anyway');
-                }
-            };
-            
-            // Start polling after 1 second delay
-            setTimeout(poll, 1000);
+            // Unpacking is now synchronously awaited in selectComponents().
+            // This function is retained only for edge cases (e.g., page reload).
+            unpackingComplete = true;
         }
 
         // Poll for documentation generation progress
@@ -1944,11 +1940,11 @@
                 globalOpt.value = '';
                 globalOpt.textContent = '🌐 Global (all components)';
                 compSelect.appendChild(globalOpt);
-                selectedComponents.forEach(path => {
+                appScreens.forEach(screen => {
                     const opt = document.createElement('option');
-                    opt.value = path;
-                    const name = path.split('/').pop() || path;
-                    opt.textContent = name;
+                    opt.value = screen.path;
+                    const icon = screen.type === 'power_automate' ? '⚡' : '📱';
+                    opt.textContent = `${icon} ${screen.display_name}`;
                     compSelect.appendChild(opt);
                 });
                 compSelect.value = item.componentPath;
@@ -2234,7 +2230,10 @@
 
                 // Re-enable chat input
                 enableChatInput();
-                document.getElementById('chatInput').value = '';
+                const chatInputEl = document.getElementById('chatInput');
+                chatInputEl.value = '';
+                chatInputEl.style.height = 'auto';
+                chatInputEl.style.overflowY = 'hidden';
 
                 // Hide chat panel if open
                 const chatPanel = document.getElementById('chatPanel');
@@ -2428,18 +2427,28 @@
             // Send to server
             ws.send(JSON.stringify({ message: message }));
             
-            // Clear input and disable
+            // Clear input, reset height, and disable
             input.value = '';
+            input.style.height = 'auto';
+            input.style.overflowY = 'hidden';
             disableChatInput();
             
             // Show typing indicator
             document.getElementById('typingIndicator').classList.add('show');
         }
 
-        function handleChatKeyPress(event) {
-            if (event.key === 'Enter') {
+        function handleChatKeyDown(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
                 sendChatMessage();
             }
+            // Shift+Enter: allow default behaviour (inserts newline)
+        }
+
+        function autoResizeChatInput(el) {
+            el.style.height = 'auto';
+            el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+            el.style.overflowY = el.scrollHeight > 160 ? 'auto' : 'hidden';
         }
 
         function enableChatInput() {

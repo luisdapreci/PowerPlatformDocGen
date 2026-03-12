@@ -473,6 +473,84 @@ async def unpack_selected_components(session_id: str, selected_paths: List[str],
         logger.exception(f"Error unpacking components for session {session_id}")
 
 
+@app.get("/app-screens/{session_id}")
+async def get_app_screens(session_id: str):
+    """
+    Return the list of individual screens/flows available for screenshot assignment.
+    Must be called after component selection and unpacking is complete.
+    For Canvas Apps: lists each screen's .fx.yaml file found in the unpacked _src folder.
+    For Power Automate flows: lists each selected workflow JSON.
+    """
+    session_dir = get_session_dir(session_id)
+    extract_dir = session_dir / "extracted"
+
+    if not session_dir.exists() or not extract_dir.exists():
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Load the selected component paths
+    selection_file = session_dir / "selected_components.json"
+    selected_components: List[str] = []
+    if selection_file.exists():
+        with open(selection_file, "r", encoding="utf-8") as f:
+            selected_components = json.load(f)
+
+    screens: List[dict] = []
+
+    for sel in selected_components:
+        normalized = sel.replace("\\", "/")
+
+        if normalized.endswith(".msapp"):
+            # Canvas App — look for unpacked _src directory
+            msapp_stem = Path(normalized).stem
+            src_dir: Optional[Path] = None
+            for item in extract_dir.rglob("*_src"):
+                if item.is_dir() and item.name.startswith(msapp_stem):
+                    src_dir = item
+                    break
+
+            if src_dir is None:
+                continue
+
+            display_name = _get_canvas_app_display_name(
+                extract_dir / normalized, extract_dir
+            )
+
+            # Discover individual screen .fx.yaml files in Src/ subfolder
+            src_folder = src_dir / "Src"
+            if src_folder.exists():
+                for fx_file in sorted(src_folder.glob("*.fx.yaml")):
+                    screen_name = fx_file.stem  # e.g. "HomeScreen"
+                    rel_path = str(fx_file.relative_to(extract_dir)).replace("\\", "/")
+                    screens.append({
+                        "path": rel_path,
+                        "display_name": f"{display_name} → {screen_name}",
+                        "type": "canvas_screen",
+                        "app_path": sel,
+                    })
+
+            # If no screens found, fall back to the entire app as one item
+            if not any(s.get("app_path") == sel for s in screens):
+                screens.append({
+                    "path": sel,
+                    "display_name": display_name,
+                    "type": "canvas_app",
+                    "app_path": sel,
+                })
+
+        elif normalized.startswith("Workflows/") and normalized.endswith(".json"):
+            flow_file = extract_dir / normalized
+            if flow_file.exists():
+                display_name = _get_flow_display_name(flow_file)
+                screens.append({
+                    "path": sel,
+                    "display_name": display_name,
+                    "type": "power_automate",
+                    "app_path": None,
+                })
+
+    return {"session_id": session_id, "screens": screens}
+
+
 # ==========================================
 # Screenshot/Image Management Endpoints
 # ==========================================

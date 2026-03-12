@@ -176,12 +176,14 @@ class DocumentationGenerator:
                     
                     # Find screenshots associated with this file's component
                     file_screenshots = []
+                    norm_path = path.replace('\\', '/')
                     for comp_path, ss_list in screenshots_by_component.items():
+                        norm_comp = comp_path.replace('\\', '/')
                         # Match if the component path is part of the file path
-                        if comp_path in path or path in comp_path:
+                        if norm_comp in norm_path or norm_path in norm_comp:
                             file_screenshots.extend(ss_list)
                         # Also match by component stem (e.g., msapp stem matches _src folder)
-                        elif Path(comp_path).stem in path:
+                        elif Path(comp_path).stem in norm_path:
                             file_screenshots.extend(ss_list)
                     
                     # Build attachments and screenshot context for prompt
