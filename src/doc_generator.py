@@ -238,6 +238,7 @@ class DocumentationGenerator:
                         component_context=path
                     )
                     
+                    _ss_before = doc_file.read_text(encoding='utf-8')
                     try:
                         ss_result = await temp_session.send_and_wait(
                             {
@@ -246,14 +247,26 @@ class DocumentationGenerator:
                             },
                             timeout=config.DOC_GEN_SCREENSHOT_TIMEOUT
                         )
-                        if ss_result and hasattr(ss_result, 'data') and hasattr(ss_result.data, 'content'):
-                            logger.info(f"✓ Screenshot pass {screenshot_step} complete")
+                        _ss_after = doc_file.read_text(encoding='utf-8')
+                        if _ss_after != _ss_before:
+                            _before_lines = _ss_before.splitlines()
+                            _after_lines = _ss_after.splitlines()
+                            _added = max(0, len(_after_lines) - len(_before_lines))
+                            _removed = max(0, len(_before_lines) - len(_after_lines))
+                            _changed = sum(1 for a, b in zip(_before_lines, _after_lines) if a != b)
+                            logger.info(f"✓ Screenshot pass {screenshot_step} complete: +{_added} -{_removed} lines, {_changed} lines changed")
                         else:
-                            logger.warning(f"No response for screenshot pass {screenshot_step}")
+                            logger.warning(f"Screenshot pass {screenshot_step}: no file edits detected, applying fallback embed")
+                            _ss_text = ""
+                            if ss_result and hasattr(ss_result, 'data') and hasattr(ss_result.data, 'content'):
+                                _ss_text = ss_result.data.content or ""
+                            self._fallback_embed_screenshot(doc_file, ss, ss_index, _ss_text)
                     except asyncio.TimeoutError:
                         logger.error(f"Timeout on screenshot pass {screenshot_step}")
+                        self._fallback_embed_screenshot(doc_file, ss, ss_index)
                     except Exception as e:
                         logger.error(f"Error on screenshot pass {screenshot_step}: {e}")
+                        self._fallback_embed_screenshot(doc_file, ss, ss_index)
             
             # GLOBAL SCREENSHOT PASSES: Process screenshots not tied to any component
             for ss in global_screenshots:
@@ -278,6 +291,7 @@ class DocumentationGenerator:
                     doc_file_path=str(doc_file)
                 )
                 
+                _ss_before = doc_file.read_text(encoding='utf-8')
                 try:
                     ss_result = await temp_session.send_and_wait(
                         {
@@ -286,14 +300,26 @@ class DocumentationGenerator:
                         },
                         timeout=config.DOC_GEN_SCREENSHOT_TIMEOUT
                     )
-                    if ss_result and hasattr(ss_result, 'data') and hasattr(ss_result.data, 'content'):
-                        logger.info(f"✓ Global screenshot pass {screenshot_step} complete")
+                    _ss_after = doc_file.read_text(encoding='utf-8')
+                    if _ss_after != _ss_before:
+                        _before_lines = _ss_before.splitlines()
+                        _after_lines = _ss_after.splitlines()
+                        _added = max(0, len(_after_lines) - len(_before_lines))
+                        _removed = max(0, len(_before_lines) - len(_after_lines))
+                        _changed = sum(1 for a, b in zip(_before_lines, _after_lines) if a != b)
+                        logger.info(f"✓ Global screenshot pass {screenshot_step} complete: +{_added} -{_removed} lines, {_changed} lines changed")
                     else:
-                        logger.warning(f"No response for global screenshot pass {screenshot_step}")
+                        logger.warning(f"Global screenshot pass {screenshot_step}: no file edits detected, applying fallback embed")
+                        _ss_text = ""
+                        if ss_result and hasattr(ss_result, 'data') and hasattr(ss_result.data, 'content'):
+                            _ss_text = ss_result.data.content or ""
+                        self._fallback_embed_screenshot(doc_file, ss, ss_index, _ss_text)
                 except asyncio.TimeoutError:
                     logger.error(f"Timeout on global screenshot pass {screenshot_step}")
+                    self._fallback_embed_screenshot(doc_file, ss, ss_index)
                 except Exception as e:
                     logger.error(f"Error on global screenshot pass {screenshot_step}: {e}")
+                    self._fallback_embed_screenshot(doc_file, ss, ss_index)
             
             # SECTION-BY-SECTION PASSES: Dedicated pass for each documentation section
             logger.info(f"Starting {len(doc_sections)} dedicated section passes...")
@@ -488,6 +514,41 @@ Do not just embed images — describe what you see in them to create thorough do
         section += "Place missing screenshots in `### 8.2 Screenshots or Diagrams` as a fallback.\n\n"
         return section
     
+    @staticmethod
+    def _fallback_embed_screenshot(
+        doc_file: Path,
+        screenshot: Dict[str, Any],
+        screenshot_index: int,
+        ai_description: str = ""
+    ) -> None:
+        """Manually embed a screenshot into the doc when Copilot didn't edit the file."""
+        context = screenshot.get('context', 'Screenshot')
+        img_path = screenshot.get('path', '')
+
+        # Build the embed block
+        embed_block = f"\n#### Screenshot {screenshot_index}: {context}\n\n"
+        if ai_description and len(ai_description.strip()) > 50:
+            desc = ai_description.strip()[:800]
+            if len(ai_description.strip()) > 800:
+                desc += "..."
+            embed_block += f"{desc}\n\n"
+        embed_block += f"![{context}]({img_path})\n\n"
+        embed_block += f"*Figure {screenshot_index}: {context}*\n"
+
+        doc_content = doc_file.read_text(encoding='utf-8')
+        section_marker = "### 8.2 Screenshots or Diagrams"
+        if section_marker in doc_content:
+            insert_pos = doc_content.index(section_marker) + len(section_marker)
+            next_nl = doc_content.find('\n', insert_pos)
+            if next_nl != -1:
+                new_content = doc_content[:next_nl + 1] + embed_block + doc_content[next_nl + 1:]
+            else:
+                new_content = doc_content + embed_block
+        else:
+            new_content = doc_content + f"\n\n### 8.2 Screenshots or Diagrams\n{embed_block}"
+        doc_file.write_text(new_content, encoding='utf-8')
+        logger.info(f"✓ Fallback embed applied for screenshot {screenshot_index}: {context[:60]}")
+
     def _build_screenshot_pass_prompt(
         self,
         screenshot: Dict[str, Any],
@@ -514,76 +575,101 @@ Do not just embed images — describe what you see in them to create thorough do
             component_hint = "\nThis is a **global screenshot** not tied to a specific component.\n"
             component_hint += "Place it in the most relevant section based on what you see in the image.\n"
         
-        return f"""[!] CRITICAL: SCREENSHOT ANALYSIS PASS — USE TOOLS ONLY
+        # Section placement hints based on component context
+        if component_context:
+            ctx_lower = component_context.lower()
+            if '.fx.yaml' in ctx_lower or 'screen' in ctx_lower or 'canvasapp' in ctx_lower:
+                section_hint = """**LIKELY RELEVANT SECTIONS:**
+- `### 3.3 User Interface` — describe screen layout, controls, navigation visible in the screenshot
+- `### 4.2 Features` — describe user-facing features shown
+- `### 8.2 Screenshots or Diagrams` — fallback if no better fit"""
+            elif 'workflow' in ctx_lower or 'flow' in ctx_lower:
+                section_hint = """**LIKELY RELEVANT SECTIONS:**
+- `### 3.4 Logic and Automation` — describe flow steps, triggers, conditions, actions visible
+- `### 2.2 Data Sources` — note any connectors or data operations shown
+- `### 8.2 Screenshots or Diagrams` — fallback if no better fit"""
+            elif 'datasource' in ctx_lower or 'connection' in ctx_lower:
+                section_hint = """**LIKELY RELEVANT SECTIONS:**
+- `### 2.2 Data Sources` — describe data connections, tables, fields visible
+- `### 3.2 Data Connections` — describe connection configuration shown
+- `### 8.2 Screenshots or Diagrams` — fallback if no better fit"""
+            else:
+                section_hint = """**LIKELY RELEVANT SECTIONS:**
+- `### 3.3 User Interface` or `### 3.4 Logic and Automation` depending on content
+- `## 1. Project Overview` if it shows the overall app purpose
+- `### 8.2 Screenshots or Diagrams` — fallback if no better fit"""
+        else:
+            section_hint = """**LIKELY RELEVANT SECTIONS:**
+- `### 3.3 User Interface` — screen/UI screenshots
+- `### 3.4 Logic and Automation` — flow/automation screenshots
+- `## 1. Project Overview` — overview/dashboard screenshots
+- `### 8.2 Screenshots or Diagrams` — fallback for any screenshot"""
 
-DO NOT write text. USE read_file and replace_string_in_file to edit `{doc_file_path}`.
+        return f"""[!] CRITICAL INSTRUCTION: USE TOOLS TO EDIT THE FILE NOW
+
+This is NOT a conversation. DO NOT write explanatory text.
+Your ONLY valid response is tool calls: read_file, replace_string_in_file, multi_replace_string_in_file.
+
+[X] INVALID: "I can see this screenshot shows..."
+[X] INVALID: "Here is my analysis of the image..."
+[OK] VALID: [Immediate tool calls to read and edit the file]
 
 ---
 
-[IMAGE] **DEDICATED SCREENSHOT PASS** (Screenshot {screenshot_index} of {total_screenshots})
+YOUR FIRST ACTION MUST BE:
+read_file(filePath="{doc_file_path}", startLine=1, endLine=200)
+
+After reading, immediately use replace_string_in_file to insert your visual analysis + image embed.
+
+---
+
+[IMAGE] **SCREENSHOT PASS** (Screenshot {screenshot_index} of {total_screenshots})
 
 **Screenshot Context (from user):** {context}
 **Associated Component:** {comp or 'Global'}
 {component_hint}
+[FILE] **DOCUMENTATION FILE TO EDIT:** `{doc_file_path}`
+
+{section_hint}
 
 ---
 
-[TOOL] **YOUR TASK — TWO STEPS:**
+[TOOL] **YOUR TASK:**
 
-**STEP 1: VISUAL ANALYSIS (study the attached image)**
+1. **Read** the current documentation file with `read_file` to find the best target section.
+   Read more ranges if needed to find the right location.
 
-You have FULL visual access to the attached screenshot. Study it carefully and extract:
-- **UI Layout**: Screen structure, navigation, headers, sidebars, overall composition
-- **Controls & Widgets**: Buttons, galleries, forms, dropdowns, text inputs, labels — note names if visible
-- **Data Displayed**: Tables, lists, cards — what data fields/values are shown?
-- **Flow Diagrams**: If it's a Power Automate flow — list every visible action/step name, conditions, branches
-- **Color Scheme & Branding**: Primary colors, logos, styling choices
-- **Business Context**: What business process or feature does this screenshot illustrate?
+2. **Analyze** the attached screenshot image with your vision and extract:
+   - UI Layout: screen structure, navigation, headers, sidebars
+   - Controls & Widgets: buttons, galleries, forms, dropdowns, text inputs — note visible names
+   - Data Displayed: tables, lists, cards, field names, example values
+   - Flow Diagrams: every visible action/step name, conditions, branches
+   - Color Scheme & Branding: primary colors, logos, styling
+   - Business Context: what business process does this illustrate?
 
-**STEP 2: WRITE DOCUMENTATION + EMBED IMAGE**
-
-1. **Read** the current documentation: `read_file(filePath="{doc_file_path}", startLine=1, endLine=200)`
-   Then read more sections as needed to find the BEST placement location.
-
-2. **Determine the best section** for this screenshot based on its content:
-   - App/screen UI → `### 3.3 User Interface` or `### 4.2 Features`
-   - Flow/automation diagram → `### 3.4 Logic and Automation`
-   - Data views/tables → `### 2.2 Data Sources`
-   - General overview → `## 1. Project Overview` or `### 8.2 Screenshots or Diagrams`
-
-3. **Write visual analysis** into the documentation at the chosen section:
-   - Describe what you see: layout, controls, data fields, flow steps
-   - Use clear, business-friendly language
-   - This written analysis is the PRIMARY VALUE — not just the image embed
-
-4. **Insert the image** adjacent to your written analysis using `replace_string_in_file`:
-   - Use this exact markdown image reference: `![{screenshot.get('context', 'Screenshot')}]({screenshot.get('path', '')})`
-   - Place it right after or before your analysis text
-   - Add a rich caption: `*Figure {screenshot_index}: <detailed description of what is shown>*`
+3. **Edit** the documentation file using `replace_string_in_file` to:
+   - Find the target section (use the hints above)
+   - **Append** a detailed written description of what you see in the image
+   - Embed the image: `![{context}]({screenshot.get('path', '')})`
+   - Add a caption: `*Figure {screenshot_index}: <detailed description>*`
+   - Do NOT remove existing content — append after it
 
 ---
 
-[EDIT] **GUIDELINES:**
+[EDIT] **EDITING GUIDELINES:**
 
 [OK] **DO:**
-- Study the image thoroughly before writing
-- Write detailed descriptions of what you see
-- Place the image in the most contextually relevant section
-- Append to existing content — don't remove other entries
-- Use replace_string_in_file for all edits
+- Use read_file first to see current doc state and pick the best section
+- Write a thorough description of what the image shows (UI, controls, data, flow steps)
+- Embed the image and caption directly adjacent to the description
+- Append to existing section content — don't overwrite other entries
+- Use replace_string_in_file for all edits (include 3-5 lines of context before/after)
 
 [STOP] **DON'T:**
-- Don't write conversational text — only use tools
-- Don't skip the visual analysis — it's the main purpose of this pass
-- Don't place all screenshots in Section 8.2 — find the BEST section
+- Don't write any text response — only tool calls
+- Don't put everything in Section 8.2 — find the best section first
+- Don't skip the image embed — `![{context}]({screenshot.get('path', '')})` must appear in the doc
 - Don't duplicate content already in the doc
-
----
-
-[START] **BEGIN IMMEDIATELY WITH TOOL CALLS:**
-
-Step 1: read_file to see the current doc state and find the best placement
-Step 2: replace_string_in_file to insert your visual analysis + the image embed
 
 NO TEXT RESPONSES — ONLY TOOL CALLS."""
 
