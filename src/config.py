@@ -45,7 +45,7 @@ USE_DNX = shutil.which(_pac_command) is None  # Use dnx if pac not installed
 PAC_UNPACK_TIMEOUT = 300  # 5 minutes
 
 # Copilot SDK settings
-COPILOT_MODEL = "claude-sonnet-4.5"
+COPILOT_MODEL = "claude-sonnet-4.6"
 COPILOT_STREAMING = True
 
 # Documentation generation timeouts (in seconds)

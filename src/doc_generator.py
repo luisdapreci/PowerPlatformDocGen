@@ -149,16 +149,18 @@ class DocumentationGenerator:
             
 
             
-            # Track screenshot pass counter across all file iterations
+            # Single monotonically increasing step counter across all passes
+            current_step = 0
             screenshot_step = 0
             
             # PASS 1: Analyze each file and directly edit relevant template sections
             for idx, (path, content) in enumerate(critical_files, 1):
                 try:
+                    current_step += 1
                     self._update_progress(
                         session_id,
                         "analyzing",
-                        idx,
+                        current_step,
                         total_steps,
                         f"Analyzing and updating doc with: {Path(path).name}"
                     )
@@ -193,7 +195,7 @@ class DocumentationGenerator:
                     _changed = sum(1 for a, b in zip(_before_lines, _after_lines) if a != b)
                     logger.info(f"✓ Pass {idx} complete: +{_added} -{_removed} lines, {_changed} lines changed")
                     self._update_progress(
-                        session_id, "analyzing", idx, total_steps,
+                        session_id, "analyzing", current_step, total_steps,
                         f"✓ {Path(path).name}",
                         diff={"added": _added, "removed": _removed, "changed": _changed}
                     )
@@ -215,13 +217,14 @@ class DocumentationGenerator:
                 
                 for ss in file_screenshots:
                     screenshot_step += 1
+                    current_step += 1
                     # Find this screenshot's index in the full list
                     ss_index = next((i for i, s in enumerate(screenshots, 1) if s.get('path') == ss.get('path')), screenshot_step)
                     
                     self._update_progress(
                         session_id,
                         "screenshot_analysis",
-                        len(critical_files) + screenshot_step,
+                        current_step,
                         total_steps,
                         f"Analyzing screenshot {screenshot_step}/{num_screenshots}: {ss.get('context', 'screenshot')[:50]}"
                     )
@@ -256,12 +259,13 @@ class DocumentationGenerator:
             # GLOBAL SCREENSHOT PASSES: Process screenshots not tied to any component
             for ss in global_screenshots:
                 screenshot_step += 1
+                current_step += 1
                 ss_index = next((i for i, s in enumerate(screenshots, 1) if s.get('path') == ss.get('path')), screenshot_step)
                 
                 self._update_progress(
                     session_id,
                     "screenshot_analysis",
-                    len(critical_files) + screenshot_step,
+                    current_step,
                     total_steps,
                     f"Analyzing global screenshot {screenshot_step}/{num_screenshots}: {ss.get('context', 'screenshot')[:50]}"
                 )
@@ -293,16 +297,15 @@ class DocumentationGenerator:
                     logger.error(f"Error on global screenshot pass {screenshot_step}: {e}")
             
             # SECTION-BY-SECTION PASSES: Dedicated pass for each documentation section
-            base_step = len(critical_files) + screenshot_step
-            
             logger.info(f"Starting {len(doc_sections)} dedicated section passes...")
             
             for sec_idx, (section_id, section_name) in enumerate(doc_sections, 1):
                 try:
+                    current_step += 1
                     self._update_progress(
                         session_id,
                         "section_generation",
-                        base_step + sec_idx,
+                        current_step,
                         total_steps,
                         f"Generating: {section_name}"
                     )
@@ -336,7 +339,7 @@ class DocumentationGenerator:
                     _changed = sum(1 for a, b in zip(_before_lines, _after_lines) if a != b)
                     logger.info(f"✓ Section '{section_id}' complete: +{_added} -{_removed} lines, {_changed} lines changed")
                     self._update_progress(
-                        session_id, "section_generation", base_step + sec_idx, total_steps,
+                        session_id, "section_generation", current_step, total_steps,
                         f"✓ {section_name}",
                         diff={"added": _added, "removed": _removed, "changed": _changed}
                     )
