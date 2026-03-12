@@ -418,6 +418,55 @@
             display: block;
         }
 
+        .progress-diff {
+            text-align: center;
+            margin: 6px 0 2px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.82rem;
+            display: none;
+        }
+
+        .progress-diff.show {
+            display: block;
+        }
+
+        .progress-diff .diff-added {
+            color: #28a745;
+            font-weight: 600;
+        }
+
+        .progress-diff .diff-removed {
+            color: #dc3545;
+            font-weight: 600;
+        }
+
+        .progress-diff .diff-changed {
+            color: #fd7e14;
+            font-weight: 600;
+        }
+
+        .progress-diff-log {
+            max-height: 140px;
+            overflow-y: auto;
+            margin: 8px auto;
+            max-width: 500px;
+            text-align: left;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.78rem;
+            color: #555;
+            display: none;
+        }
+
+        .progress-diff-log.show {
+            display: block;
+        }
+
+        .progress-diff-log .log-entry {
+            padding: 2px 8px;
+            border-left: 3px solid #dee2e6;
+            margin-bottom: 2px;
+        }
+
         .button-group {
             display: flex;
             justify-content: space-between;
@@ -1158,6 +1207,8 @@
                 <div class="status" id="generateStatus"></div>
                 <div class="loading-spinner" id="generateSpinner"></div>
                 <div class="progress-text" id="generateProgress"></div>
+                <div class="progress-diff" id="generateDiff"></div>
+                <div class="progress-diff-log" id="generateDiffLog"></div>
 
                 <div style="text-align: center; margin: 40px 0;">
                     <button class="btn btn-success" id="generateBtn" onclick="generateDocumentation()" style="font-size: 1.2rem; padding: 15px 50px;">
@@ -1875,6 +1926,8 @@
                 if (response.ok) {
                     const progress = await response.json();
                     const generateProgress = document.getElementById('generateProgress');
+                    const generateDiff = document.getElementById('generateDiff');
+                    const generateDiffLog = document.getElementById('generateDiffLog');
                     
                     if (progress.status !== 'not_started') {
                         // Build progress message
@@ -1891,6 +1944,37 @@
                         }
                         
                         generateProgress.textContent = message;
+                        
+                        // Show diff stats if available
+                        if (progress.diff) {
+                            const d = progress.diff;
+                            generateDiff.innerHTML = 
+                                `<span class="diff-added">+${d.added} added</span> &nbsp;` +
+                                `<span class="diff-removed">&minus;${d.removed} removed</span> &nbsp;` +
+                                `<span class="diff-changed">${d.changed} changed</span>`;
+                            generateDiff.classList.add('show');
+                            
+                            // Append to log history
+                            const entry = document.createElement('div');
+                            entry.className = 'log-entry';
+                            const label = progress.message || `Step ${progress.current}`;
+                            entry.innerHTML = `${label} &mdash; ` +
+                                `<span class="diff-added">+${d.added}</span> ` +
+                                `<span class="diff-removed">&minus;${d.removed}</span> ` +
+                                `<span class="diff-changed">${d.changed} mod</span>`;
+                            
+                            // Avoid duplicate entries for same step
+                            const stepKey = `step-${progress.current}`;
+                            const existing = generateDiffLog.querySelector(`[data-step="${stepKey}"]`);
+                            if (existing) {
+                                existing.replaceWith(entry);
+                            } else {
+                                entry.setAttribute('data-step', stepKey);
+                                generateDiffLog.appendChild(entry);
+                            }
+                            generateDiffLog.classList.add('show');
+                            generateDiffLog.scrollTop = generateDiffLog.scrollHeight;
+                        }
                     }
                     
                     // Stop polling if complete or error
@@ -1899,6 +1983,8 @@
                             clearInterval(docProgressInterval);
                             docProgressInterval = null;
                         }
+                        // Hide diff on completion
+                        generateDiff.classList.remove('show');
                     }
                 }
             } catch (error) {
@@ -2092,6 +2178,14 @@
             generateProgress.classList.add('show');
             generateProgress.textContent = 'Starting documentation generation... This may take up to 15 minutes.';
             generateStatus.style.display = 'none';
+            
+            // Clear diff displays from any previous run
+            const generateDiff = document.getElementById('generateDiff');
+            const generateDiffLog = document.getElementById('generateDiffLog');
+            generateDiff.classList.remove('show');
+            generateDiff.innerHTML = '';
+            generateDiffLog.classList.remove('show');
+            generateDiffLog.innerHTML = '';
             
             // Start polling for progress updates
             docProgressInterval = setInterval(pollDocumentationProgress, 2000);

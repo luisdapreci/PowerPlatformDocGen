@@ -192,6 +192,11 @@ class DocumentationGenerator:
                     _removed = max(0, len(_before_lines) - len(_after_lines))
                     _changed = sum(1 for a, b in zip(_before_lines, _after_lines) if a != b)
                     logger.info(f"✓ Pass {idx} complete: +{_added} -{_removed} lines, {_changed} lines changed")
+                    self._update_progress(
+                        session_id, "analyzing", idx, total_steps,
+                        f"✓ {Path(path).name}",
+                        diff={"added": _added, "removed": _removed, "changed": _changed}
+                    )
                 
                 except asyncio.TimeoutError:
                     logger.error(f"Timeout analyzing {path}")
@@ -330,6 +335,11 @@ class DocumentationGenerator:
                     _removed = max(0, len(_before_lines) - len(_after_lines))
                     _changed = sum(1 for a, b in zip(_before_lines, _after_lines) if a != b)
                     logger.info(f"✓ Section '{section_id}' complete: +{_added} -{_removed} lines, {_changed} lines changed")
+                    self._update_progress(
+                        session_id, "section_generation", base_step + sec_idx, total_steps,
+                        f"✓ {section_name}",
+                        diff={"added": _added, "removed": _removed, "changed": _changed}
+                    )
                 
                 except asyncio.TimeoutError:
                     logger.error(f"Timeout generating section '{section_id}', continuing...")
@@ -376,10 +386,11 @@ class DocumentationGenerator:
         stage: str, 
         current: int, 
         total: int, 
-        message: str
+        message: str,
+        diff: dict = None
     ):
         """Update progress tracking"""
-        self._generation_progress[session_id] = {
+        progress = {
             "stage": stage,
             "current": current,
             "total": total,
@@ -387,6 +398,9 @@ class DocumentationGenerator:
             "percentage": int((current / total) * 100) if total > 0 else 0,
             "updated_at": datetime.now().isoformat()
         }
+        if diff:
+            progress["diff"] = diff
+        self._generation_progress[session_id] = progress
         logger.info(f"[{session_id}] Progress: {stage} - {current}/{total} - {message}")
     
     @staticmethod
