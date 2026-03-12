@@ -43,7 +43,7 @@ from utils import (
     check_pac_cli_available,
     unpack_all_msapps
 )
-from utils.docx_renderer import render_markdown_to_docx, prepend_logo_to_markdown
+from utils.docx_renderer import render_markdown_to_docx
 from session_manager import SessionManager
 from analyze_solution_detailed import SolutionAnalyzer
 from doc_generator import get_doc_generator
@@ -302,6 +302,29 @@ def _get_canvas_app_display_name(msapp_file: Path, extract_dir: Path) -> str:
     return name.replace('_', ' ').strip().title()
 
 
+def _get_classic_workflow_display_name(xaml_file: Path) -> str:
+    """Extract display name from a classic workflow / business rule XAML file."""
+    name = xaml_file.stem
+    # Remove GUID suffix
+    cleaned = re.sub(r'-[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$', '', name, flags=re.IGNORECASE)
+    cleaned = re.sub(r'([a-z])([A-Z])', r'\1 \2', cleaned)
+    cleaned = cleaned.replace('-', ' ').replace('_', ' ')
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned.title() if cleaned else name
+
+
+def _get_formula_display_name(formula_file: Path) -> str:
+    """Extract display name from a Dataverse formula definition file."""
+    name = formula_file.stem
+    # Pattern: <publisher>_<entity>-FormulaDefinitions  or  <publisher>_<entity>-<field>.xaml
+    # Remove publisher prefix (e.g. cr39c_)
+    cleaned = re.sub(r'^[a-z0-9]+_', '', name, flags=re.IGNORECASE)
+    # Replace separators
+    cleaned = cleaned.replace('-', ' - ').replace('_', ' ')
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned.title() if cleaned else name
+
+
 def _get_flow_display_name(flow_file: Path) -> str:
     """
     Extract human-readable display name from Power Automate flow definition.
@@ -366,6 +389,30 @@ async def list_components(session_id: str):
                         name=flow_file.stem,
                         path=str(flow_file.relative_to(extract_dir)),
                         type=ComponentType.POWER_AUTOMATE,
+                        display_name=display_name
+                    ))
+        
+        # Find classic workflows / business rules (XAML files in Workflows folder)
+        if workflows_dir.exists():
+            for xaml_file in workflows_dir.glob("*.xaml"):
+                display_name = _get_classic_workflow_display_name(xaml_file)
+                components.append(SolutionComponent(
+                    name=xaml_file.stem,
+                    path=str(xaml_file.relative_to(extract_dir)),
+                    type=ComponentType.CLASSIC_WORKFLOW,
+                    display_name=display_name
+                ))
+        
+        # Find Dataverse formula definitions (Formulas folder)
+        formulas_dir = extract_dir / "Formulas"
+        if formulas_dir.exists():
+            for formula_file in sorted(formulas_dir.iterdir()):
+                if formula_file.suffix in ('.yaml', '.xaml'):
+                    display_name = _get_formula_display_name(formula_file)
+                    components.append(SolutionComponent(
+                        name=formula_file.stem,
+                        path=str(formula_file.relative_to(extract_dir)),
+                        type=ComponentType.DATAVERSE_FORMULA,
                         display_name=display_name
                     ))
         
@@ -496,19 +543,24 @@ async def get_app_screens(session_id: str):
 
     screens: List[dict] = []
 
+    logger.info(f"[app-screens] session={session_id}, selected_components={selected_components}")
+
     for sel in selected_components:
         normalized = sel.replace("\\", "/")
 
         if normalized.endswith(".msapp"):
             # Canvas App — look for unpacked _src directory
             msapp_stem = Path(normalized).stem
+            logger.info(f"[app-screens] Looking for _src dir matching stem '{msapp_stem}' in {extract_dir}")
             src_dir: Optional[Path] = None
             for item in extract_dir.rglob("*_src"):
+                logger.info(f"[app-screens]   candidate: {item.name} is_dir={item.is_dir()}")
                 if item.is_dir() and item.name.startswith(msapp_stem):
                     src_dir = item
                     break
 
             if src_dir is None:
+                logger.warning(f"[app-screens] No _src directory found for {sel}")
                 continue
 
             display_name = _get_canvas_app_display_name(
@@ -517,16 +569,24 @@ async def get_app_screens(session_id: str):
 
             # Discover individual screen .fx.yaml files in Src/ subfolder
             src_folder = src_dir / "Src"
+            logger.info(f"[app-screens] Checking Src folder: {src_folder} exists={src_folder.exists()}")
             if src_folder.exists():
-                for fx_file in sorted(src_folder.glob("*.fx.yaml")):
-                    screen_name = fx_file.stem  # e.g. "HomeScreen"
-                    rel_path = str(fx_file.relative_to(extract_dir)).replace("\\", "/")
-                    screens.append({
-                        "path": rel_path,
-                        "display_name": f"{display_name} → {screen_name}",
-                        "type": "canvas_screen",
-                        "app_path": sel,
-                    })
+                fx_files = sorted(src_folder.glob("*.fx.yaml"))
+            else:
+                # Fallback: search recursively for .fx.yaml anywhere under _src
+                logger.info(f"[app-screens] Src/ not found, falling back to rglob in {src_dir}")
+                fx_files = sorted(src_dir.rglob("*.fx.yaml"))
+            logger.info(f"[app-screens] Found {len(fx_files)} .fx.yaml files: {[f.name for f in fx_files]}")
+            for fx_file in fx_files:
+                # .stem only strips last extension (.yaml), so "Home.fx.yaml" → "Home.fx"
+                screen_name = fx_file.name.replace(".fx.yaml", "")
+                rel_path = str(fx_file.relative_to(extract_dir)).replace("\\", "/")
+                screens.append({
+                    "path": rel_path,
+                    "display_name": f"{display_name} → {screen_name}",
+                    "type": "canvas_screen",
+                    "app_path": sel,
+                })
 
             # If no screens found, fall back to the entire app as one item
             if not any(s.get("app_path") == sel for s in screens):
@@ -548,6 +608,7 @@ async def get_app_screens(session_id: str):
                     "app_path": None,
                 })
 
+    logger.info(f"[app-screens] Returning {len(screens)} screens for session {session_id}")
     return {"session_id": session_id, "screens": screens}
 
 
@@ -596,6 +657,13 @@ async def upload_screenshots(
     session_dir = get_session_dir(session_id)
     if not session_dir.exists():
         raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Reject uploads if unpacking has not completed yet
+    if not session_manager.get_session(session_id):
+        raise HTTPException(
+            status_code=409,
+            detail="Components are still being unpacked. Please wait for unpacking to finish before uploading screenshots."
+        )
     
     # Parse JSON form fields
     try:
@@ -1088,19 +1156,33 @@ def _prioritize_files_for_analysis(file_contents: Dict[str, str]) -> List[tuple]
         score = 0
         path_lower = path.lower()
         
-        # HIGHEST priority: PowerApps Power Fx formulas (business logic - typically has most info)
+        # HIGHEST priority: PowerApps Power Fx formulas — screens give the most
+        # insight about business logic and must always be analyzed first.
         if '.fx.yaml' in path_lower:
-            score = 1200
-            # Boost for specific important formulas
+            score = 3000
+            # Boost for the app-level formula file (global variables, OnStart)
             if 'app.fx.yaml' in path_lower or 'onstart' in path_lower:
                 score += 500
         
-        # High priority: Workflows (Power Automate flows - business logic)
+        # High priority: Dataverse calculated column formulas (server-side logic)
+        elif 'formulas/' in path_lower and path_lower.endswith('.yaml'):
+            score = 2500
+        
+        # High priority: Dataverse rollup/BPF XAML formulas
+        elif 'formulas/' in path_lower and path_lower.endswith('.xaml'):
+            score = 2400
+        
+        # High priority: Workflows (Power Automate cloud flows)
+        # Scored below canvas and Dataverse formulas.
         elif 'workflows' in path_lower and path_lower.endswith('.json'):
-            score = 1000
+            score = 2000
             # Boost for main workflow files (non-connection references)
-            if not 'connectionreferences' in path_lower:
+            if 'connectionreferences' not in path_lower:
                 score += 500
+        
+        # Medium-high priority: Classic workflows / business rules (XAML)
+        elif 'workflows' in path_lower and path_lower.endswith('.xaml'):
+            score = 1800
         
         # High priority: Manifests (app metadata)
         elif 'canvasmanifest.json' in path_lower:
@@ -1160,17 +1242,34 @@ def _separate_critical_files(prioritized_files: List[tuple]) -> tuple:
     critical_files = []
     non_critical_files = []
     
+    canvas_files = []          # .fx.yaml Power Fx screen formulas
+    dataverse_formulas = []     # Formulas/*.yaml calculated columns
+    dataverse_xaml = []         # Formulas/*.xaml rollup/BPF definitions
+    cloud_flows = []            # Workflows/*.json Power Automate
+    classic_workflows = []      # Workflows/*.xaml business rules
+    
     for path, content in prioritized_files:
         path_lower = path.lower()
-        is_critical = (
-            '.fx.yaml' in path_lower or  # Power Fx formulas
-            ('workflows' in path_lower and path_lower.endswith('.json') and 'connectionreferences' not in path_lower)  # Workflows
-        )
         
-        if is_critical:
-            critical_files.append((path, content))
+        if '.fx.yaml' in path_lower:
+            canvas_files.append((path, content))
+        elif 'formulas/' in path_lower and path_lower.endswith('.yaml'):
+            dataverse_formulas.append((path, content))
+        elif 'formulas/' in path_lower and path_lower.endswith('.xaml'):
+            dataverse_xaml.append((path, content))
+        elif 'workflows' in path_lower and path_lower.endswith('.json') and 'connectionreferences' not in path_lower:
+            cloud_flows.append((path, content))
+        elif 'workflows' in path_lower and path_lower.endswith('.xaml'):
+            classic_workflows.append((path, content))
         else:
             non_critical_files.append((path, content))
+    
+    # Order: Canvas screens → Dataverse formulas → Cloud flows → Classic workflows
+    # Canvas screens give the most insight about business logic.
+    # Dataverse formulas define server-side computed columns.
+    # Cloud flows contain automation logic.
+    # Classic workflows/business rules are supplementary automation.
+    critical_files = canvas_files + dataverse_formulas + dataverse_xaml + cloud_flows + classic_workflows
     
     return critical_files, non_critical_files
 
@@ -1311,6 +1410,18 @@ async def generate_documentation(
                 for json_file in workflows_dir.glob("*.json"):
                     if not json_file.stem.endswith("-ConnectionReferences"):
                         files_to_analyze.append(str(json_file.relative_to(extract_dir)))
+            
+            # Find classic workflows / business rules (XAML)
+            if workflows_dir.exists():
+                for xaml_file in workflows_dir.glob("*.xaml"):
+                    files_to_analyze.append(str(xaml_file.relative_to(extract_dir)))
+            
+            # Find Dataverse formula definitions
+            formulas_dir = extract_dir / "Formulas"
+            if formulas_dir.exists():
+                for formula_file in formulas_dir.iterdir():
+                    if formula_file.suffix in ('.yaml', '.xaml'):
+                        files_to_analyze.append(str(formula_file.relative_to(extract_dir)))
         else:
             logger.info(f"Filtering to {len(selected_components)} selected components")
             
@@ -1331,18 +1442,35 @@ async def generate_documentation(
                             logger.info(f"Matched Canvas App: {sel} -> {item.name}")
                             break
                 
-                # Process Workflow JSON files
+                # Process Workflow JSON files (Power Automate cloud flows)
                 elif normalized_sel.startswith("Workflows/") and normalized_sel.endswith('.json'):
-                    # Extract just the filename from the selection
                     selected_filename = Path(normalized_sel).name
-                    
-                    # Find exact match in Workflows directory
                     workflows_dir = extract_dir / "Workflows"
                     if workflows_dir.exists():
                         workflow_file = workflows_dir / selected_filename
                         if workflow_file.exists() and not selected_filename.endswith("-ConnectionReferences.json"):
                             files_to_analyze.append(str(workflow_file.relative_to(extract_dir)))
                             logger.info(f"Matched Workflow: {sel} -> {selected_filename}")
+                
+                # Process classic workflow / business rule XAML files
+                elif normalized_sel.startswith("Workflows/") and normalized_sel.endswith('.xaml'):
+                    selected_filename = Path(normalized_sel).name
+                    workflows_dir = extract_dir / "Workflows"
+                    if workflows_dir.exists():
+                        xaml_file = workflows_dir / selected_filename
+                        if xaml_file.exists():
+                            files_to_analyze.append(str(xaml_file.relative_to(extract_dir)))
+                            logger.info(f"Matched Classic Workflow: {sel} -> {selected_filename}")
+                
+                # Process Dataverse formula definitions
+                elif normalized_sel.startswith("Formulas/"):
+                    selected_filename = Path(normalized_sel).name
+                    formulas_dir = extract_dir / "Formulas"
+                    if formulas_dir.exists():
+                        formula_file = formulas_dir / selected_filename
+                        if formula_file.exists():
+                            files_to_analyze.append(str(formula_file.relative_to(extract_dir)))
+                            logger.info(f"Matched Formula: {sel} -> {selected_filename}")
         
         logger.info(f"Found {len(files_to_analyze)} files/folders to analyze after filtering")
         
@@ -1388,6 +1516,16 @@ async def generate_documentation(
         
         logger.info(f"Read {len(file_contents)} files totaling {sum(len(c) for c in file_contents.values())} characters")
         
+        # Include solution.xml as supplementary context (metadata about the solution)
+        solution_xml_path = extract_dir / "solution.xml"
+        if not solution_xml_path.exists():
+            solution_xml_path = extract_dir / "Other" / "solution.xml"
+        if solution_xml_path.exists() and "solution.xml" not in file_contents:
+            try:
+                file_contents["solution.xml"] = solution_xml_path.read_text(encoding='utf-8')
+            except Exception as e:
+                logger.warning(f"Could not read solution.xml: {e}")
+        
         # Read the documentation template
         template_path = config.TEMPLATES_DIR / "DocumentationTemplate.md"
         template_content = template_path.read_text(encoding='utf-8')
@@ -1411,6 +1549,8 @@ async def generate_documentation(
             # Categorize selections for better clarity
             canvas_apps = [c for c in selected_components if c.endswith('.msapp')]
             workflows = [c for c in selected_components if c.startswith('Workflows/') and c.endswith('.json')]
+            classic_wfs = [c for c in selected_components if c.startswith('Workflows/') and c.endswith('.xaml')]
+            dv_formulas = [c for c in selected_components if c.startswith('Formulas/')]
             
             component_summary = []
             if canvas_apps:
@@ -1419,6 +1559,12 @@ async def generate_documentation(
             if workflows:
                 flow_word = "Power Automate Flow" if len(workflows) == 1 else "Power Automate Flows"
                 component_summary.append(f"{len(workflows)} {flow_word}")
+            if classic_wfs:
+                cw_word = "Classic Workflow/Business Rule" if len(classic_wfs) == 1 else "Classic Workflows/Business Rules"
+                component_summary.append(f"{len(classic_wfs)} {cw_word}")
+            if dv_formulas:
+                df_word = "Dataverse Formula Definition" if len(dv_formulas) == 1 else "Dataverse Formula Definitions"
+                component_summary.append(f"{len(dv_formulas)} {df_word}")
             
             summary_text = " and ".join(component_summary) if component_summary else f"{component_count} {component_word}"
             
@@ -1534,11 +1680,6 @@ All components in the solution are included for documentation.
                     copilot_documentation = actual_file_path.read_text(encoding='utf-8')
                     logger.info(f"Read {len(copilot_documentation)} characters from actual documentation")
         
-        copilot_documentation = prepend_logo_to_markdown(
-            copilot_documentation,
-            config.DOCX_CONFIG.get('logo_path', ''),
-            config.DOCX_CONFIG.get('logo_width_inches', 1.5),
-        )
         output_file.write_text(copilot_documentation, encoding='utf-8')
 
         # Return just the filename, not the full path
@@ -1669,14 +1810,6 @@ async def convert_markdown_to_docx(file: UploadFile = File(...)):
         docx_filename = file.filename[:-3] + '.docx' if file.filename.endswith('.md') else file.filename + '.docx'
         docx_path = conversion_dir / docx_filename
         
-        # Inject logo unless the file already contains one (e.g. previously generated .md)
-        if 'data:image' not in markdown_content[:500]:
-            markdown_content = prepend_logo_to_markdown(
-                markdown_content,
-                config.DOCX_CONFIG.get('logo_path', ''),
-                config.DOCX_CONFIG.get('logo_width_inches', 1.5),
-            )
-
         # Convert to Word document
         result = render_markdown_to_docx(
             markdown_content=markdown_content,

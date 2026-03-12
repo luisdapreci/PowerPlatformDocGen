@@ -19,6 +19,8 @@ class AnalysisStatus(str, Enum):
 class ComponentType(str, Enum):
     CANVAS_APP = "canvas_app"
     POWER_AUTOMATE = "power_automate"
+    DATAVERSE_FORMULA = "dataverse_formula"
+    CLASSIC_WORKFLOW = "classic_workflow"
 
 
 class SolutionComponent(BaseModel):

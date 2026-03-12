@@ -1,53 +1,10 @@
 """Word document rendering utility for converting markdown documentation to branded .docx files via Pandoc"""
 import os
-import base64
 from pathlib import Path
 from typing import Optional, Dict, Any
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-def prepend_logo_to_markdown(content: str, logo_path: str, width_inches: float = 1.5) -> str:
-    """
-    Prepend a base64-encoded logo image to markdown content so the file is
-    self-contained and the logo is rendered in both .md viewers and .docx exports.
-
-    Args:
-        content: Existing markdown text
-        logo_path: Absolute (or project-relative) path to the logo image
-        width_inches: Rendered width in the final document (Pandoc attribute)
-
-    Returns:
-        Markdown string with the logo prepended, or the original content if the
-        logo file cannot be found/read.
-    """
-    if not logo_path:
-        return content
-
-    # Resolve relative paths from project root
-    resolved = Path(logo_path) if os.path.isabs(logo_path) else Path(__file__).parent.parent.parent / logo_path
-    if not resolved.exists():
-        logger.warning(f"Logo not found at {resolved}, skipping logo injection")
-        return content
-
-    try:
-        raw = resolved.read_bytes()
-        b64 = base64.b64encode(raw).decode('ascii')
-        # Infer MIME type from extension
-        ext = resolved.suffix.lower().lstrip('.')
-        mime = 'image/png' if ext == 'png' else f'image/{ext}'
-        data_uri = f'data:{mime};base64,{b64}'
-        # Wrap in a Pandoc fenced div mapped to Word's "Figure" style (centered by default)
-        logo_tag = (
-            f'::: {{custom-style="Figure"}}\n'
-            f'![]({data_uri}){{width={width_inches}in}}\n'
-            f':::'
-        )
-        return logo_tag + '\n\n' + content
-    except Exception as e:
-        logger.warning(f"Failed to embed logo: {e}")
-        return content
 
 
 def validate_docx_config(config: Optional[Dict]) -> Dict[str, Any]:

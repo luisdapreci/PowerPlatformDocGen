@@ -931,6 +931,38 @@ Be precise with edits. Use the tools to actually modify the documentation file."
 - `### 2.2 Data Sources` (primary/secondary sources)
 - `### 3.2 Data Connections` (connection details)
 """
+        elif 'formulas/' in path_lower and path_lower.endswith('.yaml'):
+            relevant_sections_hint = """
+**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
+This is a **Dataverse Calculated Column Formula Definition** (Power Fx, server-side).
+Each key is a column logical name and the value is the Power Fx expression.
+- `### 2.2 Data Sources` (the Dataverse table this formula belongs to)
+- `### 3.4 Logic and Automation` (document the calculated columns and their formulas)
+- `### 3.2 Data Connections` (Dataverse table reference)
+"""
+        elif 'formulas/' in path_lower and path_lower.endswith('.xaml'):
+            relevant_sections_hint = """
+**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
+This is a **Dataverse Rollup or Business Process Flow (BPF) Definition** in XAML.
+Look for <ConditionSequence>, <EvaluateExpression>, <SetAttributeValue>, <RollupDefinition>.
+- `### 3.4 Logic and Automation` (document the rollup or BPF logic)
+- `### 2.2 Data Sources` (the Dataverse entities involved)
+"""
+        elif 'workflows' in path_lower and path_lower.endswith('.xaml'):
+            relevant_sections_hint = """
+**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
+This is a **Classic Workflow or Business Rule** in XAML format.
+Look for <Rule>, <ConditionSequence>, <SetAttributeValue>, <SetDisplayMode>, <EvaluateCondition>.
+- `### 3.4 Logic and Automation` (document the business rule triggers, conditions, and actions)
+- `### 2.1 Platform Overview` (note that classic workflows/business rules are present)
+"""
+        elif 'solution.xml' in path_lower:
+            relevant_sections_hint = """
+**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
+This is the **Solution Manifest** with the solution's unique name, version, and publisher info.
+- `## Project Information` (solution name, version)
+- `### 2.1 Platform Overview` (publisher, solution metadata)
+"""
         
         return f"""[!] CRITICAL INSTRUCTION: USE TOOLS TO EDIT THE FILE NOW
 

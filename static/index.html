@@ -1554,6 +1554,8 @@
 
             const canvasApps = components.filter(c => c.type === 'canvas_app');
             const flows = components.filter(c => c.type === 'power_automate');
+            const classicWorkflows = components.filter(c => c.type === 'classic_workflow');
+            const dvFormulas = components.filter(c => c.type === 'dataverse_formula');
 
             let html = '';
 
@@ -1576,6 +1578,38 @@
             if (flows.length > 0) {
                 html += '<div class="component-section"><h3>⚡ Power Automate Flows</h3>';
                 flows.forEach(comp => {
+                    html += `
+                        <div class="component-item" data-path="${comp.path}">
+                            <input type="checkbox" class="component-checkbox" data-path="${comp.path}">
+                            <div class="component-info">
+                                <div class="component-name">${comp.display_name}</div>
+                                <div class="component-type">${comp.name}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            }
+
+            if (classicWorkflows.length > 0) {
+                html += '<div class="component-section"><h3>⚙️ Classic Workflows / Business Rules</h3>';
+                classicWorkflows.forEach(comp => {
+                    html += `
+                        <div class="component-item" data-path="${comp.path}">
+                            <input type="checkbox" class="component-checkbox" data-path="${comp.path}">
+                            <div class="component-info">
+                                <div class="component-name">${comp.display_name}</div>
+                                <div class="component-type">${comp.name}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            }
+
+            if (dvFormulas.length > 0) {
+                html += '<div class="component-section"><h3>🔢 Dataverse Formulas</h3>';
+                dvFormulas.forEach(comp => {
                     html += `
                         <div class="component-item" data-path="${comp.path}">
                             <input type="checkbox" class="component-checkbox" data-path="${comp.path}">
@@ -1732,13 +1766,16 @@
                     const response = await fetch(`/status/${sessionId}`);
                     if (response.ok) {
                         const data = await response.json();
+                        console.log(`[waitForUnpack] attempt ${i+1}: status=${data.status}`);
                         if (data.status === 'analyzing' || data.status === 'completed') {
                             unpackingComplete = true;
                             return;
                         }
+                    } else {
+                        console.warn(`[waitForUnpack] attempt ${i+1}: HTTP ${response.status}`);
                     }
                 } catch (e) {
-                    console.error('Error checking unpack status:', e);
+                    console.error('[waitForUnpack] Error:', e);
                 }
                 await new Promise(r => setTimeout(r, 2000));
             }
@@ -1749,14 +1786,19 @@
 
         async function fetchAppScreens() {
             try {
+                console.log(`[fetchAppScreens] Calling /app-screens/${sessionId}`);
                 const response = await fetch(`/app-screens/${sessionId}`);
+                console.log(`[fetchAppScreens] Response status: ${response.status}`);
                 if (response.ok) {
                     const data = await response.json();
                     appScreens = data.screens || [];
-                    console.log(`Fetched ${appScreens.length} screen-level targets for screenshot assignment`);
+                    console.log(`[fetchAppScreens] Fetched ${appScreens.length} screen-level targets:`, appScreens);
+                } else {
+                    const text = await response.text();
+                    console.error(`[fetchAppScreens] Non-OK response: ${response.status}`, text);
                 }
             } catch (e) {
-                console.error('Error fetching app screens:', e);
+                console.error('[fetchAppScreens] Error:', e);
                 appScreens = [];
             }
         }
@@ -1773,6 +1815,8 @@
             const byType = {
                 '📱 Canvas Apps': [],
                 '⚡ Power Automate Flows': [],
+                '⚙️ Classic Workflows / Business Rules': [],
+                '🔢 Dataverse Formulas': [],
                 '📦 Other': []
             };
 
@@ -1782,6 +1826,10 @@
                         byType['📱 Canvas Apps'].push(comp.display_name || comp.name);
                     } else if (comp.type === 'power_automate') {
                         byType['⚡ Power Automate Flows'].push(comp.display_name || comp.name);
+                    } else if (comp.type === 'classic_workflow') {
+                        byType['⚙️ Classic Workflows / Business Rules'].push(comp.display_name || comp.name);
+                    } else if (comp.type === 'dataverse_formula') {
+                        byType['🔢 Dataverse Formulas'].push(comp.display_name || comp.name);
                     } else {
                         byType['📦 Other'].push(comp.display_name || comp.name);
                     }
@@ -1881,6 +1929,10 @@
         }
 
         function handleScreenshotFiles(fileList) {
+            if (!unpackingComplete) {
+                alert('Please wait — components are still being unpacked.');
+                return;
+            }
             const maxTotal = 20;
             for (const file of fileList) {
                 if (pendingScreenshots.length >= maxTotal) {
@@ -2205,10 +2257,43 @@
                 generatedFiles = [];
                 unpackingComplete = false;
                 pendingScreenshots = [];
+                appScreens = [];
+                isGenerating = false;
+
+                // Clear any running progress poll
+                if (docProgressInterval) {
+                    clearInterval(docProgressInterval);
+                    docProgressInterval = null;
+                }
+
+                // Reset screenshot UI
                 document.getElementById('screenshotPreviews').innerHTML = '';
                 document.getElementById('screenshotSummary').textContent = '';
                 document.getElementById('uploadScreenshotsBtn').style.display = 'none';
                 document.getElementById('fileInput').value = '';
+
+                // Reset upload step UI
+                document.getElementById('uploadStatus').style.display = 'none';
+                document.getElementById('uploadSpinner').classList.remove('show');
+                document.getElementById('uploadProgress').classList.remove('show');
+                document.getElementById('uploadProgress').textContent = '';
+
+                // Reset component selection UI
+                document.getElementById('componentsList').innerHTML = '<div class="empty-state">Loading components...</div>';
+                document.getElementById('selectAllCheckbox').checked = false;
+                document.getElementById('selectedCount').textContent = '0';
+                document.getElementById('selectedFilesSummary').innerHTML = '';
+
+                // Reset generate step UI
+                const generateBtn = document.getElementById('generateBtn');
+                generateBtn.disabled = false;
+                generateBtn.style.opacity = '';
+                generateBtn.style.cursor = '';
+                document.getElementById('generateStatus').style.display = 'none';
+                document.getElementById('generateSpinner').classList.remove('show');
+                document.getElementById('generateProgress').classList.remove('show');
+                document.getElementById('generateProgress').textContent = '';
+                document.getElementById('businessContext').value = '';
 
                 // Close WebSocket
                 if (ws) {
@@ -2218,15 +2303,26 @@
                 }
                 currentStreamingMessage = null;
 
-                // Clear chat messages (keep the typing indicator element)
+                // Reset chat panel to initial state
                 const chatMessages = document.getElementById('chatMessages');
-                const typingIndicator = document.getElementById('typingIndicator');
-                chatMessages.innerHTML = '';
-                typingIndicator.classList.remove('show');
-                chatMessages.appendChild(typingIndicator);
-
-                // Clear chat suggestions
-                document.getElementById('chatSuggestions').innerHTML = '';
+                chatMessages.innerHTML = `
+                    <div class="chat-message assistant">
+                        <div class="message-content">
+                            👋 Hi! I'm your AI assistant. Upload a solution and I can help you:
+                            <ul style="margin: 10px 0; padding-left: 20px;">
+                                <li>Analyze Power Fx formulas</li>
+                                <li>Explain data sources and connections</li>
+                                <li>Review Power Automate flows</li>
+                                <li>Answer questions about your solution</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="chat-suggestions" id="chatSuggestions"></div>
+                    <div class="typing-indicator" id="typingIndicator">
+                        <div class="typing-dots">
+                            <span></span><span></span><span></span>
+                        </div>
+                    </div>`;
 
                 // Re-enable chat input
                 enableChatInput();
@@ -2235,9 +2331,10 @@
                 chatInputEl.style.height = 'auto';
                 chatInputEl.style.overflowY = 'hidden';
 
-                // Hide chat panel if open
+                // Hide chat panel and toggle
                 const chatPanel = document.getElementById('chatPanel');
                 chatPanel.classList.remove('show');
+                document.getElementById('chatToggle').classList.remove('show');
 
                 goToStep(1);
             }
