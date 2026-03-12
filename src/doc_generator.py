@@ -4,7 +4,6 @@ Handles documentation generation separately from chat sessions to avoid interfer
 """
 
 import asyncio
-import base64
 import logging
 from pathlib import Path
 from typing import Dict, List, Any, Optional
@@ -65,7 +64,7 @@ class DocumentationGenerator:
             screenshots: Optional list of screenshot dicts with keys:
                          'path' (file path), 'context' (user description),
                          'component_path' (associated component or None),
-                         'mime_type', 'base64_markdown' (pre-built embed snippet)
+                         'mime_type'
             
         Returns:
             Path to generated documentation file (in working directory)
@@ -245,7 +244,7 @@ class DocumentationGenerator:
                                 "prompt": ss_prompt,
                                 "attachments": [{"type": "file", "path": ss['path']}]
                             },
-                            timeout=config.DOC_GEN_FILE_TIMEOUT
+                            timeout=config.DOC_GEN_SCREENSHOT_TIMEOUT
                         )
                         if ss_result and hasattr(ss_result, 'data') and hasattr(ss_result.data, 'content'):
                             logger.info(f"✓ Screenshot pass {screenshot_step} complete")
@@ -285,7 +284,7 @@ class DocumentationGenerator:
                             "prompt": ss_prompt,
                             "attachments": [{"type": "file", "path": ss['path']}]
                         },
-                        timeout=config.DOC_GEN_FILE_TIMEOUT
+                        timeout=config.DOC_GEN_SCREENSHOT_TIMEOUT
                     )
                     if ss_result and hasattr(ss_result, 'data') and hasattr(ss_result.data, 'content'):
                         logger.info(f"✓ Global screenshot pass {screenshot_step} complete")
@@ -405,29 +404,6 @@ class DocumentationGenerator:
             progress["diff"] = diff
         self._generation_progress[session_id] = progress
         logger.info(f"[{session_id}] Progress: {stage} - {current}/{total} - {message}")
-    
-    @staticmethod
-    def _image_to_base64_markdown(image_path: str, context: str, mime_type: str = None) -> str:
-        """Convert an image file to a base64-encoded markdown image tag.
-        
-        Returns: ![context](data:mime;base64,...) string ready for embedding in markdown.
-        """
-        path = Path(image_path)
-        if not path.exists():
-            logger.warning(f"Screenshot not found: {image_path}")
-            return f"*[Image not found: {context}]*"
-        
-        if mime_type is None:
-            ext = path.suffix.lower().lstrip('.')
-            mime_map = {'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
-                        'gif': 'image/gif', 'webp': 'image/webp'}
-            mime_type = mime_map.get(ext, f'image/{ext}')
-        
-        raw = path.read_bytes()
-        b64 = base64.b64encode(raw).decode('ascii')
-        # Sanitize context for use in alt text (remove markdown special chars)
-        safe_context = context.replace('[', '(').replace(']', ')').replace('|', '-')
-        return f"![{safe_context}](data:{mime_type};base64,{b64})"
     
     @staticmethod
     def _build_screenshot_system_instructions(screenshots: Optional[List[Dict[str, Any]]] = None) -> str:

@@ -648,20 +648,13 @@ def _post_process_screenshots(
     """
     Post-process generated markdown to:
     1. Replace absolute screenshot paths with relative images/ paths
-    2. Replace base64 embedded images with relative paths
-    3. Ensure ALL screenshots are referenced in the document
+    2. Ensure ALL screenshots are referenced in the document
     """
     if not screenshots:
         return markdown
 
     # Build lookup by filename
     ss_by_filename = {ss.filename: ss for ss in screenshots}
-    # Build lookup by sanitized context (as used in base64 alt text)
-    ss_by_context = {}
-    for ss in screenshots:
-        safe_ctx = ss.context.replace('[', '(').replace(']', ')').replace('|', '-')
-        ss_by_context[safe_ctx.strip()] = ss
-        ss_by_context[ss.context.strip()] = ss
 
     referenced_filenames = set()
 
@@ -705,42 +698,6 @@ def _post_process_screenshots(
             else:
                 result_parts.append(original)
 
-        # Case 2: Base64 embedded image
-        elif url.startswith('data:image/'):
-            matched = False
-            # Try exact context match
-            if alt_text.strip() in ss_by_context:
-                ss = ss_by_context[alt_text.strip()]
-                if ss.filename not in referenced_filenames:
-                    referenced_filenames.add(ss.filename)
-                    result_parts.append(f"![{alt_text}](images/{ss.filename})")
-                    matched = True
-            # Try fuzzy match by word overlap
-            if not matched:
-                alt_words = set(alt_text.lower().split())
-                best_match = None
-                best_score = 0
-                for ss in screenshots:
-                    if ss.filename not in referenced_filenames:
-                        ctx_words = set(ss.context.lower().split())
-                        score = len(alt_words & ctx_words)
-                        if score > best_score and score >= 2:
-                            best_score = score
-                            best_match = ss
-                if best_match:
-                    referenced_filenames.add(best_match.filename)
-                    result_parts.append(f"![{alt_text}](images/{best_match.filename})")
-                    matched = True
-            if not matched:
-                # Can't determine which screenshot - leave as is but try first unreferenced
-                for ss in screenshots:
-                    if ss.filename not in referenced_filenames:
-                        referenced_filenames.add(ss.filename)
-                        result_parts.append(f"![{alt_text}](images/{ss.filename})")
-                        matched = True
-                        break
-            if not matched:
-                result_parts.append(original)
         else:
             # Track already-correct images/ references so they aren't re-appended
             if url.startswith('images/'):
@@ -1747,15 +1704,11 @@ All components in the solution are included for documentation.
                 screenshots_dir = _get_screenshots_dir(session_id)
                 for ss in screenshots_meta:
                     image_path = str(screenshots_dir / ss.filename)
-                    b64_md = doc_gen._image_to_base64_markdown(
-                        image_path, ss.context, ss.mime_type
-                    )
                     screenshot_data.append({
                         'path': image_path,
                         'context': ss.context,
                         'component_path': ss.component_path,
                         'mime_type': ss.mime_type,
-                        'base64_markdown': b64_md
                     })
                 logger.info(f"Loaded {len(screenshot_data)} screenshot(s) for documentation generation")
             
