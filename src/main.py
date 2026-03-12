@@ -640,6 +640,147 @@ def _save_screenshot_metadata(session_id: str, screenshots: List[ScreenshotMetad
         json.dump([s.model_dump(mode='json') for s in screenshots], f, indent=2, default=str)
 
 
+def _post_process_screenshots(
+    markdown: str,
+    screenshots: List[ScreenshotMetadata],
+    screenshots_dir: Path
+) -> str:
+    """
+    Post-process generated markdown to:
+    1. Replace absolute screenshot paths with relative images/ paths
+    2. Replace base64 embedded images with relative paths
+    3. Ensure ALL screenshots are referenced in the document
+    """
+    if not screenshots:
+        return markdown
+
+    # Build lookup by filename
+    ss_by_filename = {ss.filename: ss for ss in screenshots}
+    # Build lookup by sanitized context (as used in base64 alt text)
+    ss_by_context = {}
+    for ss in screenshots:
+        safe_ctx = ss.context.replace('[', '(').replace(']', ')').replace('|', '-')
+        ss_by_context[safe_ctx.strip()] = ss
+        ss_by_context[ss.context.strip()] = ss
+
+    referenced_filenames = set()
+
+    # Parse markdown, finding all ![alt](url) image references
+    # Use iterative parsing to handle large base64 strings without regex backtracking
+    result_parts = []
+    pos = 0
+    while pos < len(markdown):
+        img_start = markdown.find('![', pos)
+        if img_start == -1:
+            result_parts.append(markdown[pos:])
+            break
+
+        # Add text before this image reference
+        result_parts.append(markdown[pos:img_start])
+
+        # Find ]( after the alt text
+        bracket_end = markdown.find('](', img_start + 2)
+        if bracket_end == -1:
+            result_parts.append(markdown[img_start:])
+            break
+
+        alt_text = markdown[img_start + 2:bracket_end]
+
+        # Find closing ) for the URL
+        paren_start = bracket_end + 2
+        paren_end = markdown.find(')', paren_start)
+        if paren_end == -1:
+            result_parts.append(markdown[img_start:])
+            break
+
+        url = markdown[paren_start:paren_end]
+        original = markdown[img_start:paren_end + 1]
+
+        # Case 1: Absolute path containing screenshots directory
+        if 'screenshots' in url.replace('\\', '/').lower():
+            filename = Path(url.replace('\\', '/')).name
+            if filename in ss_by_filename:
+                referenced_filenames.add(filename)
+                result_parts.append(f"![{alt_text}](images/{filename})")
+            else:
+                result_parts.append(original)
+
+        # Case 2: Base64 embedded image
+        elif url.startswith('data:image/'):
+            matched = False
+            # Try exact context match
+            if alt_text.strip() in ss_by_context:
+                ss = ss_by_context[alt_text.strip()]
+                if ss.filename not in referenced_filenames:
+                    referenced_filenames.add(ss.filename)
+                    result_parts.append(f"![{alt_text}](images/{ss.filename})")
+                    matched = True
+            # Try fuzzy match by word overlap
+            if not matched:
+                alt_words = set(alt_text.lower().split())
+                best_match = None
+                best_score = 0
+                for ss in screenshots:
+                    if ss.filename not in referenced_filenames:
+                        ctx_words = set(ss.context.lower().split())
+                        score = len(alt_words & ctx_words)
+                        if score > best_score and score >= 2:
+                            best_score = score
+                            best_match = ss
+                if best_match:
+                    referenced_filenames.add(best_match.filename)
+                    result_parts.append(f"![{alt_text}](images/{best_match.filename})")
+                    matched = True
+            if not matched:
+                # Can't determine which screenshot - leave as is but try first unreferenced
+                for ss in screenshots:
+                    if ss.filename not in referenced_filenames:
+                        referenced_filenames.add(ss.filename)
+                        result_parts.append(f"![{alt_text}](images/{ss.filename})")
+                        matched = True
+                        break
+            if not matched:
+                result_parts.append(original)
+        else:
+            # Track already-correct images/ references so they aren't re-appended
+            if url.startswith('images/'):
+                fname = url[len('images/'):]
+                if fname in ss_by_filename:
+                    referenced_filenames.add(fname)
+            result_parts.append(original)
+
+        pos = paren_end + 1
+
+    markdown = ''.join(result_parts)
+
+    # Now ensure ALL screenshots are referenced - append missing ones
+    missing = [ss for ss in screenshots if ss.filename not in referenced_filenames]
+    if missing:
+        # Try to find "### 8.2 Screenshots" section
+        section_patterns = ["### 8.2 Screenshots", "### 8.2", "## 8. Appendices", "## 8."]
+        insert_pos = -1
+        for pattern in section_patterns:
+            idx = markdown.find(pattern)
+            if idx != -1:
+                # Find end of heading line
+                line_end = markdown.find('\n', idx)
+                if line_end != -1:
+                    insert_pos = line_end + 1
+                break
+
+        missing_block = "\n"
+        for ss in missing:
+            missing_block += f"![{ss.context}](images/{ss.filename})\n\n"
+            missing_block += f"*{ss.context}*\n\n"
+
+        if insert_pos != -1:
+            markdown = markdown[:insert_pos] + missing_block + markdown[insert_pos:]
+        else:
+            markdown += "\n\n## Screenshots\n" + missing_block
+
+    return markdown
+
+
 @app.post("/screenshots/{session_id}", response_model=ScreenshotUploadResponse)
 async def upload_screenshots(
     session_id: str,
@@ -1680,6 +1821,31 @@ All components in the solution are included for documentation.
                     copilot_documentation = actual_file_path.read_text(encoding='utf-8')
                     logger.info(f"Read {len(copilot_documentation)} characters from actual documentation")
         
+        # Post-process screenshots: copy images to output dir and fix paths
+        screenshots_meta = _load_screenshot_metadata(session_id)
+        if screenshots_meta:
+            screenshots_dir = _get_screenshots_dir(session_id)
+            images_output_dir = output_dir / "images"
+            images_output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Copy all screenshot files to output/images/
+            copied_count = 0
+            for ss in screenshots_meta:
+                src = screenshots_dir / ss.filename
+                dst = images_output_dir / ss.filename
+                if src.exists():
+                    shutil.copy2(src, dst)
+                    copied_count += 1
+                else:
+                    logger.warning(f"Screenshot file not found for copy: {src}")
+            logger.info(f"Copied {copied_count}/{len(screenshots_meta)} screenshots to {images_output_dir}")
+            
+            # Fix image paths and ensure all screenshots are included
+            copilot_documentation = _post_process_screenshots(
+                copilot_documentation, screenshots_meta, screenshots_dir
+            )
+            logger.info("Post-processed screenshot references in documentation")
+        
         output_file.write_text(copilot_documentation, encoding='utf-8')
 
         # Return just the filename, not the full path
@@ -1723,6 +1889,46 @@ async def download_file(session_id: str, filename: str):
         raise
     except Exception as e:
         logger.exception(f"Error downloading file {filename} for session {session_id}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/download-zip/{session_id}/{filename}")
+async def download_zip(session_id: str, filename: str):
+    """
+    Download documentation as a zip containing the markdown file and images/ folder.
+    """
+    import zipfile as zf
+    try:
+        output_dir = get_output_dir(session_id)
+        md_path = output_dir / filename
+
+        if not md_path.exists():
+            raise HTTPException(status_code=404, detail="File not found")
+
+        zip_filename = filename.replace('.md', '') + '_Documentation.zip'
+        zip_path = output_dir / zip_filename
+
+        with zf.ZipFile(zip_path, 'w', zf.ZIP_DEFLATED) as zipf:
+            # Add the markdown file
+            zipf.write(md_path, filename)
+
+            # Add all images from the images/ directory
+            images_dir = output_dir / "images"
+            if images_dir.exists():
+                for img_file in images_dir.iterdir():
+                    if img_file.is_file():
+                        zipf.write(img_file, f"images/{img_file.name}")
+
+        return FileResponse(
+            path=zip_path,
+            filename=zip_filename,
+            media_type='application/zip'
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error creating zip for session {session_id}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

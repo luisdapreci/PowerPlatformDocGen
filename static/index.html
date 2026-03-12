@@ -1181,11 +1181,14 @@
                 </div>
 
                 <div style="text-align: center; margin: 40px 0;">
-                    <button class="btn btn-success" onclick="downloadDocumentation()" style="font-size: 1.2rem; padding: 15px 40px; margin: 10px;">
-                        📄 Download Markdown
+                    <button class="btn btn-success" onclick="downloadZip()" style="font-size: 1.2rem; padding: 15px 40px; margin: 10px;">
+                        📦 Download ZIP (Markdown + Images)
                     </button>
                     <button class="btn btn-primary" onclick="downloadDocx()" style="font-size: 1.2rem; padding: 15px 40px; margin: 10px; background-color: #0d6efd; border-color: #0d6efd;">
                         📄 Download Word
+                    </button>
+                    <button class="btn btn-secondary" onclick="downloadDocumentation()" style="font-size: 1rem; padding: 10px 25px; margin: 10px;">
+                        📄 Download Markdown Only
                     </button>
                 </div>
 
@@ -2155,6 +2158,20 @@
             if (generatedFiles.length > 0) {
                 const filename = generatedFiles[0]; // Already just the filename
                 window.open(`/download/${sessionId}/${filename}`, '_blank');
+            } else {
+                alert('No documentation files available to download');
+            }
+        }
+
+        function downloadZip() {
+            if (generatedFiles.length > 0) {
+                const filename = generatedFiles[0];
+                const a = document.createElement('a');
+                a.href = `/download-zip/${sessionId}/${filename}`;
+                a.download = filename.replace('.md', '') + '_Documentation.zip';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
             } else {
                 alert('No documentation files available to download');
             }

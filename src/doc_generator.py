@@ -73,7 +73,9 @@ class DocumentationGenerator:
         if not self.client:
             raise RuntimeError("DocumentationGenerator not initialized")
         
-        total_steps = len(critical_files) + 2  # Files + final formatting pass
+        # Calculate total screenshot passes (computed after grouping below)
+        num_screenshots = len(screenshots) if screenshots else 0
+        total_steps = len(critical_files) + num_screenshots + 2  # Files + screenshot passes + final formatting
         
         try:
             self._update_progress(
@@ -134,22 +136,10 @@ class DocumentationGenerator:
                 else:
                     global_screenshots.append(ss)
             
-            # Create sidecar file with screenshot embed snippets to avoid inlining
-            # massive base64 strings in prompts (which can exceed token limits)
-            screenshots_snippets_file = None
-            if screenshots:
-                screenshots_snippets_file = working_directory / f"{session_id}_screenshot_snippets.md"
-                snippet_lines = ["# Screenshot Embed Snippets\n\n"]
-                snippet_lines.append("Copy the FULL line starting with `![` for the screenshot you need.\n\n")
-                for i, ss in enumerate(screenshots, 1):
-                    context = ss.get('context', 'No context provided')
-                    comp = ss.get('component_path', 'Global')
-                    snippet_lines.append(f"## Screenshot {i}: {context}\n")
-                    snippet_lines.append(f"Component: {comp or 'Global'}\n\n")
-                    snippet_lines.append(f"{ss['base64_markdown']}\n\n")
-                    snippet_lines.append("---\n\n")
-                screenshots_snippets_file.write_text("".join(snippet_lines), encoding='utf-8')
-                logger.info(f"Created screenshot snippets sidecar file: {screenshots_snippets_file} ({len(screenshots)} snippets)")
+
+            
+            # Track screenshot pass counter across all file iterations
+            screenshot_step = 0
             
             # PASS 1: Analyze each file and directly edit relevant template sections
             for idx, (path, content) in enumerate(critical_files, 1):
@@ -174,50 +164,8 @@ class DocumentationGenerator:
                         business_section
                     )
                     
-                    # Find screenshots associated with this file's component
-                    file_screenshots = []
-                    norm_path = path.replace('\\', '/')
-                    for comp_path, ss_list in screenshots_by_component.items():
-                        norm_comp = comp_path.replace('\\', '/')
-                        # Match if the component path is part of the file path
-                        if norm_comp in norm_path or norm_path in norm_comp:
-                            file_screenshots.extend(ss_list)
-                        # Also match by component stem (e.g., msapp stem matches _src folder)
-                        elif Path(comp_path).stem in norm_path:
-                            file_screenshots.extend(ss_list)
-                    
-                    # Build attachments and screenshot context for prompt
-                    attachments = []
-                    if file_screenshots:
-                        screenshot_section = "\n\n**USER-PROVIDED SCREENSHOTS FOR THIS COMPONENT:**\n\n"
-                        for si, ss in enumerate(file_screenshots, 1):
-                            attachments.append({"type": "file", "path": ss['path']})
-                            # Find global index in the full screenshots list
-                            global_idx = next((i for i, s in enumerate(screenshots, 1) if s.get('path') == ss.get('path')), si)
-                            screenshot_section += f"**Screenshot {si} (snippet #{global_idx} in sidecar file):** {ss.get('context', 'No context provided')}\n"
-                        screenshot_section += f"\n**MANDATORY VISUAL ANALYSIS + EMBEDDING TASK:**\n"
-                        screenshot_section += "For EACH screenshot above you MUST do BOTH — analyze AND embed:\n\n"
-                        screenshot_section += "**A) VISUAL ANALYSIS (write documentation based on what you SEE):**\n"
-                        screenshot_section += "   - Study the attached image carefully — you have full visual access\n"
-                        screenshot_section += "   - Identify: screen layout, controls (buttons/galleries/forms/labels), data fields shown, navigation elements\n"
-                        screenshot_section += "   - For flow screenshots: list every visible action/step name, conditions, branches, connectors\n"
-                        screenshot_section += "   - Write this analysis into the relevant doc section using `replace_string_in_file`:\n"
-                        screenshot_section += "     * UI details → `### 3.3 User Interface` (describe layout, list controls with names)\n"
-                        screenshot_section += "     * Flow details → `### 3.4 Logic and Automation` (list steps, describe logic)\n"
-                        screenshot_section += "     * Data shown → `### 2.2 Data Sources` (what data entities/fields are visible)\n"
-                        screenshot_section += "     * Features visible → `### 4.2 Features` (describe user-facing capabilities)\n\n"
-                        screenshot_section += "**B) IMAGE EMBEDDING (insert the screenshot into the doc):**\n"
-                        screenshot_section += f"   1. Read the embed snippet from `{screenshots_snippets_file}` — find `## Screenshot N` matching the number above\n"
-                        screenshot_section += "   2. Copy the FULL `![...]()` line (base64 string is very long — copy it completely)\n"
-                        screenshot_section += "   3. Insert it into the documentation section where you wrote the visual analysis above\n"
-                        screenshot_section += "   4. Add a rich caption: `*Figure N: <detailed description including key UI elements, data fields, and purpose>*`\n\n"
-                        prompt += screenshot_section
-                    
-                    # Send prompt with optional image attachments
+                    # Send prompt (no screenshot attachments — screenshots get their own passes)
                     send_payload = {"prompt": prompt}
-                    if attachments:
-                        send_payload["attachments"] = attachments
-                        logger.info(f"Attaching {len(attachments)} screenshot(s) for {path}")
                     
                     result = await temp_session.send_and_wait(
                         send_payload,
@@ -234,8 +182,97 @@ class DocumentationGenerator:
                     logger.error(f"Timeout analyzing {path}")
                 except Exception as e:
                     logger.error(f"Error analyzing {path}: {e}")
+                
+                # SCREENSHOT PASSES: After each component file, process its assigned screenshots
+                file_screenshots = []
+                norm_path = path.replace('\\', '/')
+                for comp_path, ss_list in screenshots_by_component.items():
+                    norm_comp = comp_path.replace('\\', '/')
+                    if norm_comp in norm_path or norm_path in norm_comp:
+                        file_screenshots.extend(ss_list)
+                    elif Path(comp_path).stem in norm_path:
+                        file_screenshots.extend(ss_list)
+                
+                for ss in file_screenshots:
+                    screenshot_step += 1
+                    # Find this screenshot's index in the full list
+                    ss_index = next((i for i, s in enumerate(screenshots, 1) if s.get('path') == ss.get('path')), screenshot_step)
+                    
+                    self._update_progress(
+                        session_id,
+                        "screenshot_analysis",
+                        len(critical_files) + screenshot_step,
+                        total_steps,
+                        f"Analyzing screenshot {screenshot_step}/{num_screenshots}: {ss.get('context', 'screenshot')[:50]}"
+                    )
+                    
+                    logger.info(f"Screenshot pass {screenshot_step}/{num_screenshots}: {ss.get('context', 'No context')[:60]}")
+                    
+                    ss_prompt = self._build_screenshot_pass_prompt(
+                        screenshot=ss,
+                        screenshot_index=ss_index,
+                        total_screenshots=num_screenshots,
+                        doc_file_path=str(doc_file),
+                        component_context=path
+                    )
+                    
+                    try:
+                        ss_result = await temp_session.send_and_wait(
+                            {
+                                "prompt": ss_prompt,
+                                "attachments": [{"type": "file", "path": ss['path']}]
+                            },
+                            timeout=config.DOC_GEN_FILE_TIMEOUT
+                        )
+                        if ss_result and hasattr(ss_result, 'data') and hasattr(ss_result.data, 'content'):
+                            logger.info(f"✓ Screenshot pass {screenshot_step} complete")
+                        else:
+                            logger.warning(f"No response for screenshot pass {screenshot_step}")
+                    except asyncio.TimeoutError:
+                        logger.error(f"Timeout on screenshot pass {screenshot_step}")
+                    except Exception as e:
+                        logger.error(f"Error on screenshot pass {screenshot_step}: {e}")
             
-            # PASS 2: Final formatting and gap-filling pass
+            # GLOBAL SCREENSHOT PASSES: Process screenshots not tied to any component
+            for ss in global_screenshots:
+                screenshot_step += 1
+                ss_index = next((i for i, s in enumerate(screenshots, 1) if s.get('path') == ss.get('path')), screenshot_step)
+                
+                self._update_progress(
+                    session_id,
+                    "screenshot_analysis",
+                    len(critical_files) + screenshot_step,
+                    total_steps,
+                    f"Analyzing global screenshot {screenshot_step}/{num_screenshots}: {ss.get('context', 'screenshot')[:50]}"
+                )
+                
+                logger.info(f"Global screenshot pass {screenshot_step}/{num_screenshots}: {ss.get('context', 'No context')[:60]}")
+                
+                ss_prompt = self._build_screenshot_pass_prompt(
+                    screenshot=ss,
+                    screenshot_index=ss_index,
+                    total_screenshots=num_screenshots,
+                    doc_file_path=str(doc_file)
+                )
+                
+                try:
+                    ss_result = await temp_session.send_and_wait(
+                        {
+                            "prompt": ss_prompt,
+                            "attachments": [{"type": "file", "path": ss['path']}]
+                        },
+                        timeout=config.DOC_GEN_FILE_TIMEOUT
+                    )
+                    if ss_result and hasattr(ss_result, 'data') and hasattr(ss_result.data, 'content'):
+                        logger.info(f"✓ Global screenshot pass {screenshot_step} complete")
+                    else:
+                        logger.warning(f"No response for global screenshot pass {screenshot_step}")
+                except asyncio.TimeoutError:
+                    logger.error(f"Timeout on global screenshot pass {screenshot_step}")
+                except Exception as e:
+                    logger.error(f"Error on global screenshot pass {screenshot_step}: {e}")
+            
+            # FINAL PASS: Formatting and gap-filling (no screenshot handling)
             self._update_progress(
                 session_id,
                 "formatting",
@@ -255,20 +292,12 @@ class DocumentationGenerator:
                 critical_files,
                 non_critical_files,
                 working_directory,
-                global_screenshots=global_screenshots,
-                all_screenshots=all_screenshots,
-                screenshots_snippets_file=str(screenshots_snippets_file) if screenshots_snippets_file else None
+                global_screenshots=None,  # Screenshots already handled in dedicated passes
+                all_screenshots=None      # No verification needed — each got its own pass
             )
             
-            # Build attachments for global screenshots (component-specific ones were already embedded in Pass 1)
-            final_attachments = [
-                {"type": "file", "path": ss['path']} for ss in global_screenshots
-            ]
-            
+            # No screenshot attachments in final pass — they were all handled individually
             final_payload = {"prompt": final_prompt}
-            if final_attachments:
-                final_payload["attachments"] = final_attachments
-                logger.info(f"Attaching {len(final_attachments)} global screenshot(s) for final pass")
             
             try:
                 result = await temp_session.send_and_wait(
@@ -403,14 +432,13 @@ When you receive an image attachment, study it carefully and extract:
    - In `### 3.4 Logic and Automation`: Describe flow steps, conditions, and automation paths you can see
    - In `### 4.2 Features`: Describe user-facing features visible in the screenshot
    - In `## 1. Project Overview`: Use visuals to write a more accurate summary of what the app does
-2. **EMBED** the screenshot image from the sidecar snippets file (read it with read_file)
+2. **EMBED** the screenshot using `![caption](screenshot_file_path)` with the screenshot's file path
 3. **PLACE** each image in the MOST RELEVANT section:
    - App/screen screenshots → `### 3.3 User Interface` or `### 4.2 Features`
    - Flow/automation screenshots → `### 3.4 Logic and Automation`
    - Data/output screenshots → `### 2.2 Data Sources` or `### 8.2 Screenshots or Diagrams`
    - General/overview screenshots → `## 1. Project Overview` or `### 8.2 Screenshots or Diagrams`
 4. **ADD A RICH CAPTION** below each image: `*Figure N: <detailed description of what the screenshot shows, including key UI elements and data>*`
-5. **DO NOT** modify the base64 data — copy the snippet exactly as provided
 
 **IMPORTANT:** The visual analysis should SIGNIFICANTLY ENRICH the documentation.
 Do not just embed images — describe what you see in them to create thorough documentation.
@@ -419,7 +447,6 @@ Do not just embed images — describe what you see in them to create thorough do
     @staticmethod
     def _build_global_screenshots_prompt(
         global_screenshots: Optional[List[Dict[str, Any]]] = None,
-        snippets_file_path: Optional[str] = None,
         all_screenshots: Optional[List[Dict[str, Any]]] = None
     ) -> str:
         """Build prompt section for global (non-component) screenshots in the final pass."""
@@ -430,37 +457,20 @@ Do not just embed images — describe what you see in them to create thorough do
         section += "These screenshots are not tied to a specific component. Analyze each one and place it in the most relevant documentation section.\n\n"
         for i, ss in enumerate(global_screenshots, 1):
             context = ss.get('context', 'No context provided')
-            # Find global index in the full screenshots list for sidecar file reference
-            global_idx = i
-            if all_screenshots:
-                global_idx = next((idx for idx, s in enumerate(all_screenshots, 1) if s.get('path') == ss.get('path')), i)
-            section += f"**Global Screenshot {i} (snippet #{global_idx} in sidecar):** {context}\n"
-        if snippets_file_path:
-            section += f"\n**TASK — VISUAL ANALYSIS + EMBEDDING for each global screenshot:**\n\n"
-            section += "**A) VISUAL ANALYSIS (enrich the documentation with what you SEE):**\n"
-            section += "   - Study each attached image carefully — describe UI layouts, controls, data fields, flow steps\n"
-            section += "   - Write detailed observations into the most relevant doc sections using `replace_string_in_file`\n"
-            section += "   - This analysis is the PRIMARY VALUE — screenshots alone are not enough\n\n"
-            section += "**B) IMAGE EMBEDDING:**\n"
-            section += f"   1. Read the embed snippet from `{snippets_file_path}` — find the matching `## Screenshot N` section\n"
-            section += "   2. Copy the FULL `![...]()` line and use replace_string_in_file to insert it\n"
-            section += "   3. Place the image adjacent to the descriptive text you wrote in step A\n"
-            section += "   4. Add a rich caption: `*Figure N: <detailed description of what the screenshot shows>*`\n\n"
-        else:
-            section += "\n**TASK — VISUAL ANALYSIS + EMBEDDING for each global screenshot:**\n\n"
-            section += "**A) VISUAL ANALYSIS (enrich the documentation with what you SEE):**\n"
-            section += "   - Study each attached image carefully — describe UI layouts, controls, data fields, flow steps\n"
-            section += "   - Write detailed observations into the most relevant doc sections\n\n"
-            section += "**B) IMAGE EMBEDDING:**\n"
-            section += "   1. Determine the best section for placement based on content and context\n"
-            section += "   2. Use replace_string_in_file to insert the embeddable markdown at the right location\n"
-            section += "   3. Add a rich caption: `*Figure N: <detailed description of what the screenshot shows>*`\n\n"
+            section += f"**Global Screenshot {i}:** {context}\n"
+        section += "\n**TASK — VISUAL ANALYSIS + EMBEDDING for each global screenshot:**\n\n"
+        section += "**A) VISUAL ANALYSIS (enrich the documentation with what you SEE):**\n"
+        section += "   - Study each attached image carefully — describe UI layouts, controls, data fields, flow steps\n"
+        section += "   - Write detailed observations into the most relevant doc sections\n\n"
+        section += "**B) IMAGE EMBEDDING:**\n"
+        section += "   1. Determine the best section for placement based on content and context\n"
+        section += "   2. Insert `![caption](screenshot_path)` using the screenshot's file path\n"
+        section += "   3. Add a rich caption: `*Figure N: <detailed description of what the screenshot shows>*`\n\n"
         return section
     
     @staticmethod
     def _build_screenshot_verification_prompt(
-        all_screenshots: Optional[List[Dict[str, Any]]] = None,
-        snippets_file_path: Optional[str] = None
+        all_screenshots: Optional[List[Dict[str, Any]]] = None
     ) -> str:
         """Build a verification prompt to ensure all screenshots were embedded."""
         if not all_screenshots:
@@ -468,20 +478,114 @@ Do not just embed images — describe what you see in them to create thorough do
         
         section = f"\n[CHECK] **SCREENSHOT VERIFICATION ({len(all_screenshots)} total):**\n\n"
         section += "After completing all other tasks, verify that EVERY screenshot below appears in the documentation.\n"
-        section += "Search the document for `![` markers or `data:image` strings to confirm embedding.\n\n"
+        section += "Search the document for `![` markers to confirm embedding.\n\n"
         for i, ss in enumerate(all_screenshots, 1):
             context = ss.get('context', 'No context provided')
             comp = ss.get('component_path', 'Global')
             section += f"  {i}. \"{context}\" (component: {comp or 'Global'})\n"
-        if snippets_file_path:
-            section += f"\nIf any screenshot is MISSING from the document, read its embed snippet from `{snippets_file_path}` "
-            section += "(find `## Screenshot N` matching the number above) and use `replace_string_in_file` to insert it.\n"
-            section += "Place missing screenshots in `### 8.2 Screenshots or Diagrams` as a fallback.\n\n"
-        else:
-            section += f"\nIf any screenshot is MISSING from the document, embed it now using `replace_string_in_file`.\n"
-            section += "Place missing screenshots in `### 8.2 Screenshots or Diagrams` as a fallback.\n\n"
+        section += f"\nIf any screenshot is MISSING from the document, embed it now using `replace_string_in_file`.\n"
+        section += "Place missing screenshots in `### 8.2 Screenshots or Diagrams` as a fallback.\n\n"
         return section
     
+    def _build_screenshot_pass_prompt(
+        self,
+        screenshot: Dict[str, Any],
+        screenshot_index: int,
+        total_screenshots: int,
+        doc_file_path: str,
+        component_context: str = ""
+    ) -> str:
+        """Build prompt for a dedicated single-screenshot analysis pass.
+        
+        Each screenshot gets its own AI pass where the model:
+        1. Looks at the image with full visual attention
+        2. Writes documentation based on what it sees
+        3. Inserts the image reference in the most relevant location
+        """
+        context = screenshot.get('context', 'No context provided')
+        comp = screenshot.get('component_path', 'Global')
+        
+        component_hint = ""
+        if component_context:
+            component_hint = f"\nThis screenshot is associated with component: **{component_context}**\n"
+            component_hint += "Focus your analysis on how this image relates to that component's documentation.\n"
+        else:
+            component_hint = "\nThis is a **global screenshot** not tied to a specific component.\n"
+            component_hint += "Place it in the most relevant section based on what you see in the image.\n"
+        
+        return f"""[!] CRITICAL: SCREENSHOT ANALYSIS PASS — USE TOOLS ONLY
+
+DO NOT write text. USE read_file and replace_string_in_file to edit `{doc_file_path}`.
+
+---
+
+[IMAGE] **DEDICATED SCREENSHOT PASS** (Screenshot {screenshot_index} of {total_screenshots})
+
+**Screenshot Context (from user):** {context}
+**Associated Component:** {comp or 'Global'}
+{component_hint}
+
+---
+
+[TOOL] **YOUR TASK — TWO STEPS:**
+
+**STEP 1: VISUAL ANALYSIS (study the attached image)**
+
+You have FULL visual access to the attached screenshot. Study it carefully and extract:
+- **UI Layout**: Screen structure, navigation, headers, sidebars, overall composition
+- **Controls & Widgets**: Buttons, galleries, forms, dropdowns, text inputs, labels — note names if visible
+- **Data Displayed**: Tables, lists, cards — what data fields/values are shown?
+- **Flow Diagrams**: If it's a Power Automate flow — list every visible action/step name, conditions, branches
+- **Color Scheme & Branding**: Primary colors, logos, styling choices
+- **Business Context**: What business process or feature does this screenshot illustrate?
+
+**STEP 2: WRITE DOCUMENTATION + EMBED IMAGE**
+
+1. **Read** the current documentation: `read_file(filePath="{doc_file_path}", startLine=1, endLine=200)`
+   Then read more sections as needed to find the BEST placement location.
+
+2. **Determine the best section** for this screenshot based on its content:
+   - App/screen UI → `### 3.3 User Interface` or `### 4.2 Features`
+   - Flow/automation diagram → `### 3.4 Logic and Automation`
+   - Data views/tables → `### 2.2 Data Sources`
+   - General overview → `## 1. Project Overview` or `### 8.2 Screenshots or Diagrams`
+
+3. **Write visual analysis** into the documentation at the chosen section:
+   - Describe what you see: layout, controls, data fields, flow steps
+   - Use clear, business-friendly language
+   - This written analysis is the PRIMARY VALUE — not just the image embed
+
+4. **Insert the image** adjacent to your written analysis using `replace_string_in_file`:
+   - Use this exact markdown image reference: `![{screenshot.get('context', 'Screenshot')}]({screenshot.get('path', '')})`
+   - Place it right after or before your analysis text
+   - Add a rich caption: `*Figure {screenshot_index}: <detailed description of what is shown>*`
+
+---
+
+[EDIT] **GUIDELINES:**
+
+[OK] **DO:**
+- Study the image thoroughly before writing
+- Write detailed descriptions of what you see
+- Place the image in the most contextually relevant section
+- Append to existing content — don't remove other entries
+- Use replace_string_in_file for all edits
+
+[STOP] **DON'T:**
+- Don't write conversational text — only use tools
+- Don't skip the visual analysis — it's the main purpose of this pass
+- Don't place all screenshots in Section 8.2 — find the BEST section
+- Don't duplicate content already in the doc
+
+---
+
+[START] **BEGIN IMMEDIATELY WITH TOOL CALLS:**
+
+Step 1: read_file to see the current doc state and find the best placement
+Step 2: replace_string_in_file to insert your visual analysis + the image embed
+
+NO TEXT RESPONSES — ONLY TOOL CALLS."""
+
     async def generate_documentation_consolidation(
         self,
         session_id: str,
@@ -1126,8 +1230,7 @@ BEGIN WITH TOOL USAGE IMMEDIATELY - NO TEXT RESPONSES."""
         non_critical_files: List[tuple],
         working_directory: Path,
         global_screenshots: Optional[List[Dict[str, Any]]] = None,
-        all_screenshots: Optional[List[Dict[str, Any]]] = None,
-        screenshots_snippets_file: Optional[str] = None
+        all_screenshots: Optional[List[Dict[str, Any]]] = None
     ) -> str:
         """Build prompt for final formatting and gap-filling pass with exploration capability"""
         
@@ -1278,9 +1381,9 @@ You've just analyzed {files_analyzed} Power Platform files and incrementally upd
 
 Make all necessary edits to `{doc_file_path}` to produce a polished, complete, professional documentation file.
 
-{self._build_global_screenshots_prompt(global_screenshots, snippets_file_path=screenshots_snippets_file, all_screenshots=all_screenshots)}
+{self._build_global_screenshots_prompt(global_screenshots, all_screenshots=all_screenshots)}
 
-{self._build_screenshot_verification_prompt(all_screenshots, snippets_file_path=screenshots_snippets_file)}
+{self._build_screenshot_verification_prompt(all_screenshots)}
 
 Focus on:
 - **Completeness** (fill all fillable sections, explore additional files when needed)
