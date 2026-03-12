@@ -1048,8 +1048,8 @@
                 </div>
                 <div class="mode-btn" onclick="selectMode('markdown')">
                     <div class="mode-icon">📄</div>
-                    <div class="mode-title">Convert Markdown to Word</div>
-                    <div class="mode-description">Upload a markdown file and convert it to a Word document (.docx)</div>
+                    <div class="mode-title">Convert to Word Document</div>
+                    <div class="mode-description">Upload a markdown file or a zip (markdown + images) and convert to a Word document (.docx)</div>
                 </div>
             </div>
         </div>
@@ -1058,14 +1058,14 @@
         <div class="markdown-converter" id="markdownConverter">
             <button class="back-to-modes" onclick="backToModes()">← Back to Mode Selection</button>
             
-            <h2>Convert Markdown to Word</h2>
-            <p style="color: #666; margin: 20px 0;">Upload a markdown (.md) file to convert it to a Word document (.docx)</p>
+            <h2>Convert to Word Document</h2>
+            <p style="color: #666; margin: 20px 0;">Upload a markdown (.md) file or a zip archive containing markdown + images to convert to a Word document (.docx)</p>
 
             <div class="converter-upload-area" id="converterUploadArea">
                 <div class="converter-icon">📄</div>
-                <div class="converter-text">Drag & Drop your markdown file here</div>
-                <div class="converter-hint">or click to browse (Max 10MB, .md files only)</div>
-                <input type="file" id="converterFileInput" accept=".md" style="display: none;">
+                <div class="converter-text">Drag & Drop your file here</div>
+                <div class="converter-hint">or click to browse &mdash; .md (max 10 MB) or .zip with images (max 50 MB)</div>
+                <input type="file" id="converterFileInput" accept=".md,.zip" style="display: none;">
             </div>
 
             <div class="converter-file-info" id="converterFileInfo">
@@ -1394,17 +1394,22 @@
         });
 
         function handleConverterFileSelect(file) {
+            const name = file.name.toLowerCase();
+            const isMd = name.endsWith('.md');
+            const isZip = name.endsWith('.zip');
+
             // Validate file type
-            if (!file.name.endsWith('.md')) {
+            if (!isMd && !isZip) {
                 converterStatus.className = 'status error';
-                converterStatus.textContent = '❌ Only markdown (.md) files are supported';
+                converterStatus.textContent = '❌ Only markdown (.md) or zip (.zip) files are supported';
                 return;
             }
 
-            // Validate file size (10MB max)
-            if (file.size > 10 * 1024 * 1024) {
+            // Validate file size (10 MB for md, 50 MB for zip)
+            const maxSize = isZip ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+            if (file.size > maxSize) {
                 converterStatus.className = 'status error';
-                converterStatus.textContent = '❌ File too large (max 10MB)';
+                converterStatus.textContent = `❌ File too large (max ${isZip ? '50' : '10'}MB)`;
                 return;
             }
 
@@ -1415,7 +1420,9 @@
             converterFileInfo.classList.add('show');
             convertBtn.classList.add('show');
             converterStatus.className = 'status success';
-            converterStatus.textContent = '✅ File ready for conversion';
+            converterStatus.textContent = isZip
+                ? '✅ Zip file ready — will extract markdown + images and convert to Word'
+                : '✅ Markdown file ready for conversion';
         }
 
         async function convertMarkdownToDocx() {
@@ -1447,7 +1454,7 @@
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = converterFile.name.replace('.md', '.docx');
+                a.download = converterFile.name.replace(/\.(md|zip)$/i, '.docx');
                 document.body.appendChild(a);
                 a.click();
                 window.URL.revokeObjectURL(url);

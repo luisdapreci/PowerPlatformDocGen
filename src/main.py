@@ -1910,12 +1910,14 @@ async def download_docx(session_id: str, filename: str):
         with open(md_file_path, 'r', encoding='utf-8') as f:
             markdown_content = f.read()
         
-        # Generate Word document on-demand
+        # Generate Word document on-demand, passing the output dir as
+        # resource_path so Pandoc can resolve relative images/ references.
         docx_file_path = output_dir / docx_filename
         result = render_markdown_to_docx(
             markdown_content=markdown_content,
             output_path=str(docx_file_path),
-            config=config.DOCX_CONFIG
+            config=config.DOCX_CONFIG,
+            resource_path=str(output_dir),
         )
         
         if result['status'] != 'success':
@@ -1942,69 +1944,123 @@ async def download_docx(session_id: str, filename: str):
 @app.post("/convert-markdown-to-docx")
 async def convert_markdown_to_docx(file: UploadFile = File(...)):
     """
-    Convert an uploaded markdown file to a Word document (standalone feature)
+    Convert an uploaded file to a Word document (.docx).
+
+    Accepts:
+      - A standalone .md file
+      - A .zip containing a .md file and an optional images/ folder
     """
+    import zipfile as zf
+
     try:
-        # Validate file
-        if not file.filename.endswith('.md'):
-            raise HTTPException(status_code=400, detail="Only markdown (.md) files are supported")
-        
-        # Check file size (max 10MB for standalone markdown files)
+        fname = file.filename or ""
+        is_zip = fname.lower().endswith('.zip')
+        is_md = fname.lower().endswith('.md')
+
+        if not is_zip and not is_md:
+            raise HTTPException(
+                status_code=400,
+                detail="Only markdown (.md) or zip (.zip) files are supported"
+            )
+
+        # Check file size (50 MB for zips, 10 MB for plain markdown)
         file_content = await file.read()
-        if len(file_content) > 10 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail="File too large (max 10MB)")
-        
-        # Decode markdown content
-        try:
-            markdown_content = file_content.decode('utf-8')
-        except UnicodeDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid UTF-8 encoding in file")
-        
-        # Generate a temporary session ID for this conversion
+        max_size = 50 * 1024 * 1024 if is_zip else 10 * 1024 * 1024
+        if len(file_content) > max_size:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large (max {'50' if is_zip else '10'}MB)"
+            )
+
         conversion_id = generate_session_id()
         conversion_dir = config.TEMP_DIR / "conversions" / conversion_id
         conversion_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Generate .docx filename from markdown filename
-        docx_filename = file.filename[:-3] + '.docx' if file.filename.endswith('.md') else file.filename + '.docx'
+
+        resource_path: Optional[str] = None
+
+        if is_zip:
+            # Extract zip and locate the markdown file + images
+            zip_extract_dir = conversion_dir / "extracted"
+            zip_extract_dir.mkdir(parents=True, exist_ok=True)
+
+            zip_tmp = conversion_dir / "upload.zip"
+            zip_tmp.write_bytes(file_content)
+
+            if not zf.is_zipfile(zip_tmp):
+                shutil.rmtree(conversion_dir, ignore_errors=True)
+                raise HTTPException(status_code=400, detail="Uploaded file is not a valid zip archive")
+
+            with zf.ZipFile(zip_tmp, 'r') as z:
+                # Security: reject paths that escape the extraction directory
+                for member in z.namelist():
+                    resolved = (zip_extract_dir / member).resolve()
+                    if not str(resolved).startswith(str(zip_extract_dir.resolve())):
+                        shutil.rmtree(conversion_dir, ignore_errors=True)
+                        raise HTTPException(status_code=400, detail="Zip contains unsafe paths")
+                z.extractall(zip_extract_dir)
+
+            zip_tmp.unlink(missing_ok=True)
+
+            # Find the first .md file (prefer root-level, then any nested)
+            md_files = sorted(zip_extract_dir.rglob("*.md"), key=lambda p: len(p.parts))
+            if not md_files:
+                shutil.rmtree(conversion_dir, ignore_errors=True)
+                raise HTTPException(
+                    status_code=400,
+                    detail="No markdown (.md) file found inside the zip"
+                )
+
+            md_file_path = md_files[0]
+            markdown_content = md_file_path.read_text(encoding='utf-8')
+            # Use the directory containing the md as resource_path so
+            # relative refs like images/foo.png resolve correctly.
+            resource_path = str(md_file_path.parent)
+            base_name = md_file_path.stem
+        else:
+            # Plain markdown upload
+            try:
+                markdown_content = file_content.decode('utf-8')
+            except UnicodeDecodeError:
+                shutil.rmtree(conversion_dir, ignore_errors=True)
+                raise HTTPException(status_code=400, detail="Invalid UTF-8 encoding in file")
+            base_name = fname[:-3] if fname.endswith('.md') else fname
+
+        docx_filename = base_name + '.docx'
         docx_path = conversion_dir / docx_filename
-        
-        # Convert to Word document
+
         result = render_markdown_to_docx(
             markdown_content=markdown_content,
             output_path=str(docx_path),
-            config=config.DOCX_CONFIG
+            config=config.DOCX_CONFIG,
+            resource_path=resource_path,
         )
-        
+
         if result['status'] != 'success':
             logger.error(f"Word document conversion failed: {result.get('error', 'Unknown error')}")
-            # Cleanup
             shutil.rmtree(conversion_dir, ignore_errors=True)
             raise HTTPException(
                 status_code=500,
                 detail=f"Word document conversion failed: {result.get('error', 'Unknown error')}"
             )
-        
-        # Return the Word document
+
         response = FileResponse(
             path=docx_path,
             filename=docx_filename,
             media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
-        
-        # Schedule cleanup after response is sent (do it in background)
+
         async def cleanup():
-            await asyncio.sleep(5)  # Wait 5 seconds to ensure download completes
+            await asyncio.sleep(5)
             shutil.rmtree(conversion_dir, ignore_errors=True)
-        
+
         asyncio.create_task(cleanup())
-        
+
         return response
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception(f"Error converting markdown to Word document")
+        logger.exception("Error converting file to Word document")
         raise HTTPException(status_code=500, detail=str(e))
 
 

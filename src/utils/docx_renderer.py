@@ -43,7 +43,8 @@ def validate_docx_config(config: Optional[Dict]) -> Dict[str, Any]:
 def render_markdown_to_docx(
     markdown_content: str,
     output_path: str,
-    config: Optional[Dict] = None
+    config: Optional[Dict] = None,
+    resource_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Convert markdown content to a Word document (.docx) using Pandoc.
@@ -57,6 +58,11 @@ def render_markdown_to_docx(
             - enable_toc: Include a table of contents (default: False)
             - reference_doc: Path to a branded reference .docx for styles
             - highlight_style: Code highlight theme (default: tango)
+        resource_path: Directory Pandoc uses to resolve relative image paths
+            (e.g. the output dir that contains images/).  When provided the
+            markdown is written to a temp file inside this directory so that
+            both --resource-path *and* Pandoc's default CWD-based resolution
+            pick up the images.
 
     Returns:
         Dict with 'status', 'file_path', and optional 'error' key
@@ -97,13 +103,32 @@ def render_markdown_to_docx(
         if config['reference_doc']:
             extra_args.append(f'--reference-doc={config["reference_doc"]}')
 
-        pypandoc.convert_text(
-            markdown_content,
-            'docx',
-            format='markdown',
-            outputfile=output_path,
-            extra_args=extra_args,
-        )
+        # When a resource_path is given, write markdown to a temp file inside
+        # that directory so Pandoc resolves relative image refs like images/foo.png.
+        if resource_path:
+            resource_dir = Path(resource_path)
+            extra_args.append(f'--resource-path={resource_dir}')
+
+            tmp_md_path = resource_dir / '_tmp_docx_source.md'
+            try:
+                tmp_md_path.write_text(markdown_content, encoding='utf-8')
+                pypandoc.convert_file(
+                    str(tmp_md_path),
+                    'docx',
+                    format='markdown',
+                    outputfile=output_path,
+                    extra_args=extra_args,
+                )
+            finally:
+                tmp_md_path.unlink(missing_ok=True)
+        else:
+            pypandoc.convert_text(
+                markdown_content,
+                'docx',
+                format='markdown',
+                outputfile=output_path,
+                extra_args=extra_args,
+            )
 
         return {
             'status': 'success',
