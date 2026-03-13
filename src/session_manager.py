@@ -349,6 +349,12 @@ Use these tools to explore and analyze Power Platform components directly."""
                 ]
                 
                 for session_id in expired:
+                    managed = self.sessions.get(session_id)
+                    if managed and managed.is_generating:
+                        logger.info(f"Skipping cleanup of session {session_id} - documentation generation in progress")
+                        # Refresh activity so it won't expire again next cycle
+                        managed.update_last_activity()
+                        continue
                     logger.info(f"Cleaning up expired session {session_id}")
                     await self.destroy_session(session_id)
                     # Also remove temp files for this session
@@ -418,6 +424,7 @@ class ManagedSession:
         self.working_directory = working_directory
         self.last_activity = datetime.now()
         self.created_at = datetime.now()
+        self.is_generating = False  # True while documentation generation is in progress
     
     def update_last_activity(self):
         """Update last activity timestamp"""

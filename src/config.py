@@ -23,7 +23,7 @@ ALLOWED_IMAGE_TYPES = {'image/png', 'image/jpeg', 'image/gif', 'image/webp'}
 ALLOWED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
 
 # Session settings
-SESSION_TIMEOUT = 30 * 60  # 30 minutes in seconds
+SESSION_TIMEOUT = 60 * 60  # 60 minutes in seconds
 MAX_CONCURRENT_SESSIONS = 10
 
 # Power Platform CLI

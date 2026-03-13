@@ -1697,6 +1697,12 @@ All components in the solution are included for documentation.
             # Get the dedicated documentation generator
             doc_gen = await get_doc_generator()
             
+            # Mark session as generating so the cleanup loop won't expire it mid-run
+            _managed = session_manager.sessions.get(session_id)
+            if _managed:
+                _managed.is_generating = True
+                _managed.update_last_activity()
+            
             # Load screenshots if any
             screenshot_data = []
             screenshots_meta = _load_screenshot_metadata(session_id)
@@ -1733,6 +1739,11 @@ All components in the solution are included for documentation.
             error_msg = str(e)
             logger.exception("Error in documentation generation")
             copilot_documentation = f"# Low-Code Project Documentation\n\n*Error generating documentation: {error_msg}*\n\n*Attempted to analyze {len(critical_files)} critical files and {len(non_critical_files)} supporting files.*"
+        finally:
+            # Always clear generating flag so the session can expire normally afterwards
+            if _managed:
+                _managed.is_generating = False
+                _managed.update_last_activity()
         
         # Save the Copilot-generated documentation
         output_dir = get_output_dir(session_id)
