@@ -15,6 +15,7 @@ from .pac_cli import (
     unpack_all_msapps,
     get_pac_cli_version
 )
+from .image_utils import optimize_image
 
 __all__ = [
     "generate_session_id",
@@ -29,4 +30,5 @@ __all__ = [
     "unpack_msapp",
     "unpack_all_msapps",
     "get_pac_cli_version",
+    "optimize_image",
 ]

@@ -247,7 +247,7 @@ class DocumentationGenerator:
                         ss_result = await temp_session.send_and_wait(
                             {
                                 "prompt": ss_prompt,
-                                "attachments": [{"type": "file", "path": ss['path']}]
+                                "attachments": [{"type": "file", "path": ss.get('ai_path', ss['path'])}]
                             },
                             timeout=config.DOC_GEN_SCREENSHOT_TIMEOUT
                         )
@@ -258,6 +258,7 @@ class DocumentationGenerator:
                             _added = max(0, len(_after_lines) - len(_before_lines))
                             _removed = max(0, len(_before_lines) - len(_after_lines))
                             _changed = sum(1 for a, b in zip(_before_lines, _after_lines) if a != b)
+                            logger.info(f"✓ Pass {idx} screenshot {screenshot_step} complete: +{_added} -{_removed} lines, {_changed} lines changed")
                             logger.info(f"✓ Screenshot pass {screenshot_step} complete: +{_added} -{_removed} lines, {_changed} lines changed")
                         else:
                             logger.warning(f"Screenshot pass {screenshot_step}: no file edits detected, applying fallback embed")
@@ -300,7 +301,7 @@ class DocumentationGenerator:
                     ss_result = await temp_session.send_and_wait(
                         {
                             "prompt": ss_prompt,
-                            "attachments": [{"type": "file", "path": ss['path']}]
+                            "attachments": [{"type": "file", "path": ss.get('ai_path', ss['path'])}]
                         },
                         timeout=config.DOC_GEN_SCREENSHOT_TIMEOUT
                     )

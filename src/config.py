@@ -22,6 +22,13 @@ MAX_SCREENSHOTS_PER_SESSION = 20
 ALLOWED_IMAGE_TYPES = {'image/png', 'image/jpeg', 'image/gif', 'image/webp'}
 ALLOWED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
 
+# Image optimization for faster AI vision analysis
+# Images are resized on upload to reduce file size and speed up processing
+IMAGE_MAX_DIMENSION = 1920  # Max width or height in pixels (maintains aspect ratio)
+IMAGE_JPEG_QUALITY = 80     # JPEG compression quality (1-100)
+IMAGE_WEBP_QUALITY = 80     # WebP compression quality (1-100)
+IMAGE_PNG_OPTIMIZE = True   # Enable PNG optimization
+
 # Session settings
 SESSION_TIMEOUT = 60 * 60  # 60 minutes in seconds
 MAX_CONCURRENT_SESSIONS = 10

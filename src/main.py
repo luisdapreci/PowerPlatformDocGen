@@ -41,7 +41,8 @@ from utils import (
     cleanup_session,
     is_valid_solution_structure,
     check_pac_cli_available,
-    unpack_all_msapps
+    unpack_all_msapps,
+    optimize_image
 )
 from utils.docx_renderer import render_markdown_to_docx
 from session_manager import SessionManager
@@ -820,11 +821,16 @@ async def upload_screenshots(
                 detail=f"File '{file.filename}' exceeds maximum size of {config.MAX_SCREENSHOT_SIZE // (1024*1024)}MB"
             )
         
-        # Generate unique ID and save
+        # Generate unique ID and save original at full resolution
         screenshot_id = generate_session_id()
         saved_filename = f"{screenshot_id}{ext}"
         save_path = screenshots_dir / saved_filename
         save_path.write_bytes(content)
+        
+        # Create optimized copy for faster AI vision analysis
+        optimized_bytes, opt_ext = optimize_image(content, ext)
+        optimized_filename = f"{screenshot_id}_optimized{opt_ext}"
+        (screenshots_dir / optimized_filename).write_bytes(optimized_bytes)
         
         mime_type = file.content_type or f"image/{ext.lstrip('.')}"
         component_path = component_path_list[i] if component_path_list[i] else None
@@ -1709,9 +1715,15 @@ All components in the solution are included for documentation.
             if screenshots_meta:
                 screenshots_dir = _get_screenshots_dir(session_id)
                 for ss in screenshots_meta:
-                    image_path = str(screenshots_dir / ss.filename)
+                    original_path = str(screenshots_dir / ss.filename)
+                    # Use optimized copy for AI vision (faster), original for embed in output
+                    stem = Path(ss.filename).stem
+                    suffix = Path(ss.filename).suffix
+                    optimized_file = screenshots_dir / f"{stem}_optimized{suffix}"
+                    ai_path = str(optimized_file) if optimized_file.exists() else original_path
                     screenshot_data.append({
-                        'path': image_path,
+                        'path': original_path,
+                        'ai_path': ai_path,
                         'context': ss.context,
                         'component_path': ss.component_path,
                         'mime_type': ss.mime_type,

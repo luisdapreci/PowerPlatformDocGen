@@ -20,5 +20,8 @@ pyyaml==6.0.1
 # XML Processing (Power Platform uses XML for metadata)
 lxml==5.4.0
 
+# Image Processing (resize/compress screenshots for faster AI vision analysis)
+Pillow>=10.0.0
+
 # Utilities
 python-dotenv==1.0.1
