@@ -658,6 +658,11 @@ Read additional ranges as needed to see the full content of the target section b
    - Add a brief caption on the next line: `*Figure {screenshot_index}: <what the image shows>*`
    - The result should read as one continuous, natural narrative — NOT as a separate block or sub-heading
 
+**[!] CRITICAL — IMAGE PATH:** You MUST use EXACTLY this path in the markdown embed:
+   `{screenshot.get('path', '')}`
+   Do NOT use the attachment file path — the attachment is a compressed preview.
+   The path above points to the full-resolution original image.
+
 ---
 
 [EDIT] **EDITING GUIDELINES:**
@@ -673,6 +678,7 @@ Read additional ranges as needed to see the full content of the target section b
 - **DON'T append a standalone block** at the end of the file — edit the most relevant existing section
 - Don't put everything in Section 8.2 — expand the best-fit section with the visual detail
 - Don't skip the image embed — `![{context}]({screenshot.get('path', '')})` must appear in the doc
+- **NEVER use a path containing `_optimized`** — always use the exact path: `{screenshot.get('path', '')}`
 - Don't duplicate content already in the doc
 - Don't write text responses — only tool calls
 

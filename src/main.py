@@ -648,11 +648,17 @@ def _post_process_screenshots(
 ) -> str:
     """
     Post-process generated markdown to:
-    1. Replace absolute screenshot paths with relative images/ paths
-    2. Ensure ALL screenshots are referenced in the document
+    1. Fix any _optimized image paths back to original full-resolution filenames
+    2. Replace absolute screenshot paths with relative images/ paths
+    3. Ensure ALL screenshots are referenced in the document
     """
     if not screenshots:
         return markdown
+
+    # Safety net: replace any _optimized references with the original filename.
+    # The AI may have used the optimized attachment path instead of the original.
+    import re as _re
+    markdown = _re.sub(r'_optimized(?=\.(png|jpe?g|gif|webp))', '', markdown, flags=_re.IGNORECASE)
 
     # Build lookup by filename
     ss_by_filename = {ss.filename: ss for ss in screenshots}
