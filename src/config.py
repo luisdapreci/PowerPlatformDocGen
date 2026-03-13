@@ -49,9 +49,9 @@ COPILOT_MODEL = "claude-sonnet-4.6"
 COPILOT_STREAMING = True
 
 # Documentation generation timeouts (in seconds)
-DOC_GEN_FILE_TIMEOUT = 180  # 3 minutes per critical file
+DOC_GEN_FILE_TIMEOUT = 360  # 6 minutes per critical file
 DOC_GEN_SCREENSHOT_TIMEOUT = 360  # 6 minutes per screenshot (vision analysis + write + embed)
-DOC_GEN_SECTION_TIMEOUT = 240  # 4 minutes per documentation section (section-by-section generation)
+DOC_GEN_SECTION_TIMEOUT = 360  # 6 minutes per documentation section (section-by-section generation)
 DOC_GEN_FINAL_PASS_TIMEOUT = 480  # 8 minutes for the final formatting/gap-filling pass (explores files, fills many sections)
 DOC_GEN_CONSOLIDATION_TIMEOUT = 600  # 10 minutes for final consolidation (deprecated - now using section-by-section)
 
