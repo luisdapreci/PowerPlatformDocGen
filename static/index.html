@@ -1129,7 +1129,6 @@
                 <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
                     <button class="convert-btn show" onclick="downloadUserGuide('zip')" style="display: inline-block;">📦 Download ZIP</button>
                     <button class="convert-btn show" onclick="downloadUserGuide('docx')" style="display: inline-block;">📝 Download Word</button>
-                    <button class="convert-btn show" onclick="downloadUserGuide('md')" style="display: inline-block;">📄 Download Markdown</button>
                 </div>
             </div>
         </div>
@@ -1286,9 +1285,19 @@
                 
                 <div class="status" id="generateStatus"></div>
                 <div class="loading-spinner" id="generateSpinner"></div>
-                <div class="progress-text" id="generateProgress"></div>
-                <div class="progress-diff" id="generateDiff"></div>
-                <div class="progress-diff-log" id="generateDiffLog"></div>
+
+                <div id="generateProgressPanel" style="display: none; margin: 20px 0;">
+                    <div style="background: #e0e7ff; border-radius: 8px; padding: 20px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <span id="generateProgressMessage" style="font-weight: 500; color: #333;">Starting...</span>
+                            <span id="generateProgressPercent" style="font-weight: bold; color: #667eea;">0%</span>
+                        </div>
+                        <div style="background: #c5d0ff; border-radius: 4px; height: 8px; overflow: hidden;">
+                            <div id="generateProgressBar" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); height: 100%; width: 0%; transition: width 0.5s ease; border-radius: 4px;"></div>
+                        </div>
+                        <div id="generateProgressLog" style="margin-top: 12px; font-size: 0.85rem; color: #555; max-height: 150px; overflow-y: auto;"></div>
+                    </div>
+                </div>
 
                 <div style="text-align: center; margin: 40px 0;">
                     <button class="btn btn-success" id="generateBtn" onclick="generateDocumentation()" style="font-size: 1.2rem; padding: 15px 50px;">
@@ -1317,9 +1326,6 @@
                     </button>
                     <button class="btn btn-primary" onclick="downloadDocx()" style="font-size: 1.2rem; padding: 15px 40px; margin: 10px; background-color: #0d6efd; border-color: #0d6efd;">
                         📄 Download Word
-                    </button>
-                    <button class="btn btn-secondary" onclick="downloadDocumentation()" style="font-size: 1rem; padding: 10px 25px; margin: 10px;">
-                        📄 Download Markdown Only
                     </button>
                 </div>
 
@@ -2183,55 +2189,39 @@
                 const response = await fetch(`/doc-progress/${sessionId}`);
                 if (response.ok) {
                     const progress = await response.json();
-                    const generateProgress = document.getElementById('generateProgress');
-                    const generateDiff = document.getElementById('generateDiff');
-                    const generateDiffLog = document.getElementById('generateDiffLog');
+                    const panel = document.getElementById('generateProgressPanel');
                     
                     if (progress.status !== 'not_started') {
+                        panel.style.display = 'block';
+                        
                         // Build progress message
                         let message = progress.message || 'Processing...';
-                        
-                        // Add progress indicator if available
                         if (progress.current && progress.total) {
                             message = `[${progress.current}/${progress.total}] ${message}`;
                         }
                         
-                        // Add percentage if available
-                        if (progress.percentage !== undefined) {
-                            message = `${message} (${progress.percentage}%)`;
-                        }
+                        document.getElementById('generateProgressMessage').textContent = message;
+                        document.getElementById('generateProgressPercent').textContent = (progress.percentage || 0) + '%';
+                        document.getElementById('generateProgressBar').style.width = (progress.percentage || 0) + '%';
                         
-                        generateProgress.textContent = message;
-                        
-                        // Show diff stats if available
-                        if (progress.diff) {
+                        // Append to log if diff stats available
+                        if (progress.diff && progress.message && progress.message.startsWith('✓')) {
+                            const logEl = document.getElementById('generateProgressLog');
                             const d = progress.diff;
-                            generateDiff.innerHTML = 
-                                `<span class="diff-added">+${d.added} added</span> &nbsp;` +
-                                `<span class="diff-removed">&minus;${d.removed} removed</span> &nbsp;` +
-                                `<span class="diff-changed">${d.changed} changed</span>`;
-                            generateDiff.classList.add('show');
-                            
-                            // Append to log history
-                            const entry = document.createElement('div');
-                            entry.className = 'log-entry';
-                            const label = progress.message || `Step ${progress.current}`;
-                            entry.innerHTML = `${label} &mdash; ` +
-                                `<span class="diff-added">+${d.added}</span> ` +
-                                `<span class="diff-removed">&minus;${d.removed}</span> ` +
-                                `<span class="diff-changed">${d.changed} mod</span>`;
+                            const diffStr = ` <span style="color:#27ae60">+${d.added}</span> <span style="color:#e74c3c">-${d.removed}</span> <span style="color:#f39c12">~${d.changed}</span>`;
                             
                             // Avoid duplicate entries for same step
                             const stepKey = `step-${progress.current}`;
-                            const existing = generateDiffLog.querySelector(`[data-step="${stepKey}"]`);
+                            const existing = logEl.querySelector(`[data-step="${stepKey}"]`);
+                            const entry = document.createElement('div');
+                            entry.setAttribute('data-step', stepKey);
+                            entry.innerHTML = `${progress.message}${diffStr}`;
                             if (existing) {
                                 existing.replaceWith(entry);
                             } else {
-                                entry.setAttribute('data-step', stepKey);
-                                generateDiffLog.appendChild(entry);
+                                logEl.appendChild(entry);
                             }
-                            generateDiffLog.classList.add('show');
-                            generateDiffLog.scrollTop = generateDiffLog.scrollHeight;
+                            logEl.scrollTop = logEl.scrollHeight;
                         }
                     }
                     
@@ -2241,8 +2231,6 @@
                             clearInterval(docProgressInterval);
                             docProgressInterval = null;
                         }
-                        // Hide diff on completion
-                        generateDiff.classList.remove('show');
                     }
                 }
             } catch (error) {
@@ -2414,7 +2402,7 @@
             const generateBtn = document.getElementById('generateBtn');
             const generateStatus = document.getElementById('generateStatus');
             const generateSpinner = document.getElementById('generateSpinner');
-            const generateProgress = document.getElementById('generateProgress');
+            const generateProgress = document.getElementById('generateProgressPanel');
             const businessContext = document.getElementById('businessContext').value.trim();
 
             // Prevent execution if button is disabled (unpacking in progress or already generating)
@@ -2433,17 +2421,14 @@
             generateBtn.style.opacity = '0.6';
             generateBtn.style.cursor = 'not-allowed';
             generateSpinner.classList.add('show');
-            generateProgress.classList.add('show');
-            generateProgress.textContent = 'Starting documentation generation... This may take up to 15 minutes.';
+            generateProgress.style.display = 'block';
+            document.getElementById('generateProgressMessage').textContent = 'Starting documentation generation... This may take up to 15 minutes.';
+            document.getElementById('generateProgressPercent').textContent = '0%';
+            document.getElementById('generateProgressBar').style.width = '0%';
             generateStatus.style.display = 'none';
             
-            // Clear diff displays from any previous run
-            const generateDiff = document.getElementById('generateDiff');
-            const generateDiffLog = document.getElementById('generateDiffLog');
-            generateDiff.classList.remove('show');
-            generateDiff.innerHTML = '';
-            generateDiffLog.classList.remove('show');
-            generateDiffLog.innerHTML = '';
+            // Clear log from any previous run
+            document.getElementById('generateProgressLog').innerHTML = '';
             
             // Start polling for progress updates
             docProgressInterval = setInterval(pollDocumentationProgress, 2000);
@@ -2471,7 +2456,7 @@
                 }
 
                 generateSpinner.classList.remove('show');
-                generateProgress.classList.remove('show');
+                generateProgress.style.display = 'none';
 
                 if (response.ok) {
                     generatedFiles = data.markdown_files;
@@ -2497,7 +2482,7 @@
                 
                 isGenerating = false;
                 generateSpinner.classList.remove('show');
-                generateProgress.classList.remove('show');
+                generateProgress.style.display = 'none';
                 showStatus(generateStatus, 'error', 'Error: ' + error.message);
                 generateBtn.disabled = false;
                 generateBtn.style.opacity = '1';
