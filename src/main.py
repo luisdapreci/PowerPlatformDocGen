@@ -1855,8 +1855,8 @@ async def generate_qa_test_scripts(
     business_context: Optional[str] = Body(None, embed=True)
 ):
     """
-    Generate QA test scripts and code review documents for selected components.
-    Produces two documents: TestScripts.md and CodeReview.md.
+    Generate QA test scripts for selected components.
+    Produces one document: TestScripts.md.
     """
     try:
         if business_context:
@@ -2079,32 +2079,6 @@ The user has selected {summary_text} for QA analysis:
             markdown_files.append(ts_file.name)
             logger.info(f"✓ Test scripts saved: {ts_file.name}")
 
-            # ---- Generate Code Review ----
-            code_review_template = config.TEMPLATES_DIR / "CodeReviewTemplate.md"
-            logger.info(f"Starting code review generation...")
-
-            code_review_content = await doc_gen.generate_code_review(
-                session_id=session_id,
-                working_directory=extract_dir,
-                critical_files=critical_files,
-                non_critical_files=non_critical_files,
-                template_path=code_review_template,
-                selection_context=selection_context,
-                business_context=business_context or "",
-            )
-
-            # Build code review filename
-            if selected_components and len(selected_components) == 1:
-                cr_file = output_dir / f"{project_name}_{comp_name}_CodeReview.md"
-            elif selected_components:
-                cr_file = output_dir / f"{project_name}_{len(selected_components)}Components_CodeReview.md"
-            else:
-                cr_file = output_dir / f"{project_name}_CodeReview.md"
-
-            cr_file.write_text(code_review_content, encoding='utf-8')
-            markdown_files.append(cr_file.name)
-            logger.info(f"✓ Code review saved: {cr_file.name}")
-
             return DocumentationFiles(
                 session_id=session_id,
                 markdown_files=markdown_files,
@@ -2131,7 +2105,7 @@ The user has selected {summary_text} for QA analysis:
 
 @app.get("/qa-progress/{session_id}")
 async def get_qa_progress(session_id: str):
-    """Get the current progress of QA test scripts / code review generation."""
+    """Get the current progress of QA test scripts generation."""
     try:
         doc_gen = await get_doc_generator()
         progress = doc_gen.get_progress(session_id)

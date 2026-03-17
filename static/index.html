@@ -1290,8 +1290,8 @@
                         <label style="flex: 1; min-width: 200px; cursor: pointer;">
                             <input type="radio" name="docType" value="qa" onchange="onDocTypeChange()" style="display: none;">
                             <div id="docTypeCardQA" style="border: 2px solid #dee2e6; border-radius: 8px; padding: 15px; background: #fff; transition: all 0.2s;">
-                                <strong style="color: #333; font-size: 1rem;">🧪 QA Test Scripts & Code Review</strong>
-                                <p style="color: #666; font-size: 0.85rem; margin: 8px 0 0 0;">QA test scenarios (functional, edge cases, delegation, performance) + code review with weak points, enhancements, and priority matrix.</p>
+                                <strong style="color: #333; font-size: 1rem;">🧪 QA Test Scripts</strong>
+                                <p style="color: #666; font-size: 0.85rem; margin: 8px 0 0 0;">QA test scenarios: functional tests, edge cases, delegation, performance, security, accessibility, and regression checklist.</p>
                             </div>
                         </label>
                     </div>
@@ -1789,65 +1789,19 @@
             const successMsg = document.getElementById('downloadSuccessMsg');
             container.innerHTML = '';
 
-            if (selectedDocType === 'qa' && generatedFiles.length > 1) {
-                successMsg.textContent = '✓ QA Test Scripts & Code Review generated successfully!';
-                // Show separate download sections for each file
-                generatedFiles.forEach((filename, index) => {
-                    const isTestScripts = filename.includes('TestScripts');
-                    const label = isTestScripts ? '🧪 Test Scripts' : '📋 Code Review';
-                    const shortName = filename.replace('.md', '');
-
-                    const section = document.createElement('div');
-                    section.style.cssText = 'background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px 20px; margin: 10px 0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;';
-                    section.innerHTML = `
-                        <span style="font-weight: 600; font-size: 1rem; color: #333;">${label}</span>
-                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                            <button class="btn btn-success" onclick="downloadZipForFile('${filename}')" style="padding: 8px 20px;">
-                                📦 ZIP
-                            </button>
-                            <button class="btn btn-primary" onclick="downloadDocxForFile(this, '${filename}')" style="padding: 8px 20px; background-color: #0d6efd; border-color: #0d6efd;">
-                                📄 Word
-                            </button>
-                        </div>
-                    `;
-                    container.appendChild(section);
-                });
+            if (selectedDocType === 'qa') {
+                successMsg.textContent = '✓ QA Test Scripts generated successfully!';
             } else {
                 successMsg.textContent = '✓ Documentation generated successfully!';
-                container.innerHTML = `
-                    <button class="btn btn-success" onclick="downloadZip()" style="font-size: 1.2rem; padding: 15px 40px; margin: 10px;">
-                        📦 Download ZIP (Markdown + Images)
-                    </button>
-                    <button class="btn btn-primary" onclick="downloadDocx()" style="font-size: 1.2rem; padding: 15px 40px; margin: 10px; background-color: #0d6efd; border-color: #0d6efd;">
-                        📄 Download Word
-                    </button>
-                `;
             }
-        }
-
-        function downloadZipForFile(filename) {
-            const a = document.createElement('a');
-            a.href = `/download-zip/${sessionId}/${filename}`;
-            a.download = filename.replace('.md', '') + '.zip';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        }
-
-        function downloadDocxForFile(btn, filename) {
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '⏳ Generating...';
-            btn.disabled = true;
-            const a = document.createElement('a');
-            a.href = `/download-docx/${sessionId}/${filename}`;
-            a.download = filename.replace('.md', '.docx');
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(() => {
-                btn.innerHTML = originalText;
-                btn.disabled = false;
-            }, 3000);
+            container.innerHTML = `
+                <button class="btn btn-success" onclick="downloadZip()" style="font-size: 1.2rem; padding: 15px 40px; margin: 10px;">
+                    📦 Download ZIP (Markdown + Images)
+                </button>
+                <button class="btn btn-primary" onclick="downloadDocx()" style="font-size: 1.2rem; padding: 15px 40px; margin: 10px; background-color: #0d6efd; border-color: #0d6efd;">
+                    📄 Download Word
+                </button>
+            `;
         }
 
         // Step 1: Upload
@@ -2502,8 +2456,8 @@
                 qaCard.style.background = '#f0fff0';
                 techCard.style.border = '2px solid #dee2e6';
                 techCard.style.background = '#fff';
-                generateBtn.innerHTML = '🧪 Generate QA Test Scripts & Code Review';
-                hint.textContent = 'Provide business context to help the AI generate more relevant test scenarios and identify weak points:';
+                generateBtn.innerHTML = '🧪 Generate QA Test Scripts';
+                hint.textContent = 'Provide business context to help the AI generate more relevant test scenarios:';
                 tip.textContent = '💡 Tip: Include expected behaviors, known issues, compliance requirements, user roles, and business rules to test against';
             } else {
                 techCard.style.border = '2px solid #667eea';
@@ -2640,7 +2594,7 @@
             generateBtn.style.cursor = 'not-allowed';
             generateSpinner.classList.add('show');
             generateProgress.style.display = 'block';
-            document.getElementById('generateProgressMessage').textContent = 'Starting QA test scripts & code review generation... This may take up to 20 minutes.';
+            document.getElementById('generateProgressMessage').textContent = 'Starting QA test scripts generation... This may take up to 20 minutes.';
             document.getElementById('generateProgressPercent').textContent = '0%';
             document.getElementById('generateProgressBar').style.width = '0%';
             generateStatus.style.display = 'none';
@@ -2694,7 +2648,7 @@
                 if (response.ok) {
                     generatedFiles = data.markdown_files;
                     isGenerating = false;
-                    showStatus(generateStatus, 'success', 'QA Test Scripts & Code Review generated successfully!');
+                    showStatus(generateStatus, 'success', 'QA Test Scripts generated successfully!');
                     setTimeout(() => goToStep(5), 1500);
                 } else {
                     isGenerating = false;
