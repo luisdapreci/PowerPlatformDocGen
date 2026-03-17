@@ -3231,6 +3231,1185 @@ BEGIN WITH TOOL USAGE IMMEDIATELY."""
 
         return markdown
 
+    # ========================================================================
+    # QA TEST SCRIPTS & CODE REVIEW GENERATION
+    # ========================================================================
+
+    async def generate_test_scripts(
+        self,
+        session_id: str,
+        working_directory: Path,
+        critical_files: List[tuple],
+        non_critical_files: List[tuple],
+        template_path: Path,
+        selection_context: str = "",
+        business_context: str = "",
+        screenshots: Optional[List[Dict[str, Any]]] = None
+    ) -> str:
+        """
+        Generate QA test scripts by incrementally editing the TestScriptsTemplate.
+        Follows the same incremental editing pattern as generate_documentation().
+        """
+        if not self.client:
+            raise RuntimeError("DocumentationGenerator not initialized")
+
+        num_screenshots = len(screenshots) if screenshots else 0
+
+        qa_sections = [
+            ("test_plan_info", "Test Plan Information"),
+            ("test_environment", "Test Environment & Data"),
+            ("canvas_tests", "Canvas App Test Scenarios"),
+            ("flow_tests", "Power Automate Flow Test Scenarios"),
+            ("integration_tests", "Integration Test Scenarios"),
+            ("edge_boundary", "Edge Case & Boundary Tests"),
+            ("perf_security_a11y", "Performance, Security & Accessibility"),
+            ("regression_checklist", "Regression Checklist & Cleanup"),
+        ]
+        total_steps = len(critical_files) + num_screenshots + len(qa_sections)
+
+        try:
+            self._update_progress(
+                session_id, "initializing", 0, total_steps,
+                "Creating test scripts template and session"
+            )
+
+            doc_file = working_directory / f"{session_id}_TestScripts.md"
+            import shutil
+            shutil.copy(template_path, doc_file)
+            logger.info(f"Created test scripts template copy: {doc_file}")
+
+            session_config = {
+                "model": config.COPILOT_MODEL,
+                "working_directory": str(working_directory.parent),
+                "streaming": False,
+                "on_permission_request": lambda req, ctx: (
+                    PermissionRequestResult(kind="denied-by-rules")
+                    if req.kind.value == "shell"
+                    else PermissionRequestResult(kind="approved")
+                ),
+                "system_message": {
+                    "mode": "append",
+                    "content": self._build_qa_system_prompt(
+                        str(doc_file), "test_scripts", screenshots=screenshots
+                    )
+                }
+            }
+
+            temp_session = await self.client.create_session(session_config)
+            logger.info(f"Created QA test scripts session for {session_id}")
+
+            business_section = ""
+            if business_context:
+                business_section = f"\n\n**USER BUSINESS CONTEXT:**\n{business_context}\n"
+
+            screenshots = screenshots or []
+            screenshots_by_component = {}
+            global_screenshots = []
+            for ss in screenshots:
+                cp = ss.get('component_path')
+                if cp:
+                    screenshots_by_component.setdefault(cp, []).append(ss)
+                else:
+                    global_screenshots.append(ss)
+
+            current_step = 0
+            screenshot_step = 0
+
+            # PASS 1: Analyze each file and extract test scenarios
+            for idx, (path, content) in enumerate(critical_files, 1):
+                try:
+                    current_step += 1
+                    self._update_progress(
+                        session_id, "analyzing", current_step, total_steps,
+                        f"Extracting test scenarios from: {Path(path).name}"
+                    )
+
+                    _before_lines = doc_file.read_text(encoding='utf-8').splitlines()
+
+                    prompt = self._build_incremental_qa_file_prompt(
+                        path, content, idx, len(critical_files),
+                        str(doc_file), selection_context, business_section
+                    )
+
+                    await temp_session.send_and_wait(
+                        {"prompt": prompt},
+                        timeout=config.DOC_GEN_FILE_TIMEOUT
+                    )
+
+                    _after_lines = doc_file.read_text(encoding='utf-8').splitlines()
+                    _added = max(0, len(_after_lines) - len(_before_lines))
+                    _removed = max(0, len(_before_lines) - len(_after_lines))
+                    _changed = sum(1 for a, b in zip(_before_lines, _after_lines) if a != b)
+                    logger.info(f"✓ QA Pass {idx} complete: +{_added} -{_removed} lines, {_changed} lines changed")
+                    self._update_progress(
+                        session_id, "analyzing", current_step, total_steps,
+                        f"✓ {Path(path).name}",
+                        diff={"added": _added, "removed": _removed, "changed": _changed}
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(f"Timeout analyzing {path} for QA")
+                except Exception as e:
+                    logger.error(f"Error analyzing {path} for QA: {e}")
+
+                # Process screenshots associated with this file
+                file_screenshots = []
+                norm_path = path.replace('\\', '/')
+                for comp_path, ss_list in screenshots_by_component.items():
+                    norm_comp = comp_path.replace('\\', '/')
+                    if norm_comp in norm_path or norm_path in norm_comp:
+                        file_screenshots.extend(ss_list)
+                    elif Path(comp_path).stem in norm_path:
+                        file_screenshots.extend(ss_list)
+
+                for ss in file_screenshots:
+                    screenshot_step += 1
+                    current_step += 1
+                    ss_index = next((i for i, s in enumerate(screenshots, 1) if s.get('path') == ss.get('path')), screenshot_step)
+                    self._update_progress(
+                        session_id, "screenshot_analysis", current_step, total_steps,
+                        f"Analyzing screenshot {screenshot_step}/{num_screenshots} for test context"
+                    )
+                    ss_prompt = self._build_screenshot_pass_prompt(
+                        screenshot=ss, screenshot_index=ss_index,
+                        total_screenshots=num_screenshots,
+                        doc_file_path=str(doc_file), component_context=path
+                    )
+                    try:
+                        await temp_session.send_and_wait(
+                            {"prompt": ss_prompt, "attachments": [{"type": "file", "path": ss.get('ai_path', ss['path'])}]},
+                            timeout=config.DOC_GEN_SCREENSHOT_TIMEOUT
+                        )
+                    except Exception as e:
+                        logger.error(f"Error on QA screenshot pass {screenshot_step}: {e}")
+
+            # Process global screenshots
+            for ss in global_screenshots:
+                screenshot_step += 1
+                current_step += 1
+                ss_index = next((i for i, s in enumerate(screenshots, 1) if s.get('path') == ss.get('path')), screenshot_step)
+                self._update_progress(
+                    session_id, "screenshot_analysis", current_step, total_steps,
+                    f"Analyzing global screenshot {screenshot_step}/{num_screenshots}"
+                )
+                ss_prompt = self._build_screenshot_pass_prompt(
+                    screenshot=ss, screenshot_index=ss_index,
+                    total_screenshots=num_screenshots, doc_file_path=str(doc_file)
+                )
+                try:
+                    await temp_session.send_and_wait(
+                        {"prompt": ss_prompt, "attachments": [{"type": "file", "path": ss.get('ai_path', ss['path'])}]},
+                        timeout=config.DOC_GEN_SCREENSHOT_TIMEOUT
+                    )
+                except Exception as e:
+                    logger.error(f"Error on QA global screenshot pass {screenshot_step}: {e}")
+
+            # PASS 2: Section-by-section test script generation
+            for sec_idx, (section_id, section_name) in enumerate(qa_sections, 1):
+                try:
+                    current_step += 1
+                    self._update_progress(
+                        session_id, "section_generation", current_step, total_steps,
+                        f"Generating: {section_name}"
+                    )
+                    _before_lines = doc_file.read_text(encoding='utf-8').splitlines()
+
+                    section_prompt = self._build_qa_section_editing_prompt(
+                        section_id=section_id, section_name=section_name,
+                        doc_file_path=str(doc_file), selection_context=selection_context,
+                        business_section=business_section,
+                        files_analyzed=len(critical_files),
+                        critical_files=critical_files,
+                        non_critical_files=non_critical_files,
+                        working_directory=working_directory,
+                    )
+                    await temp_session.send_and_wait(
+                        {"prompt": section_prompt},
+                        timeout=config.DOC_GEN_SECTION_TIMEOUT
+                    )
+
+                    _after_lines = doc_file.read_text(encoding='utf-8').splitlines()
+                    _added = max(0, len(_after_lines) - len(_before_lines))
+                    _removed = max(0, len(_before_lines) - len(_after_lines))
+                    _changed = sum(1 for a, b in zip(_before_lines, _after_lines) if a != b)
+                    logger.info(f"✓ QA Section '{section_id}' complete: +{_added} -{_removed} lines, {_changed} lines changed")
+                    self._update_progress(
+                        session_id, "section_generation", current_step, total_steps,
+                        f"✓ {section_name}",
+                        diff={"added": _added, "removed": _removed, "changed": _changed}
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(f"Timeout generating QA section '{section_id}'")
+                except Exception as e:
+                    logger.error(f"Error generating QA section '{section_id}': {e}")
+
+            documentation = doc_file.read_text(encoding='utf-8')
+            logger.info(f"✓ Test scripts ready: {len(documentation)} chars")
+
+            try:
+                if hasattr(temp_session, 'close'):
+                    await temp_session.close()
+            except Exception as e:
+                logger.warning(f"Error closing QA session: {e}")
+
+            self._update_progress(
+                session_id, "test_scripts_complete", total_steps, total_steps,
+                "Test scripts generation complete"
+            )
+            return documentation
+
+        except Exception as e:
+            logger.exception(f"Error in test scripts generation for {session_id}")
+            self._update_progress(session_id, "error", 0, total_steps, f"Error: {str(e)}")
+            raise
+
+    async def generate_code_review(
+        self,
+        session_id: str,
+        working_directory: Path,
+        critical_files: List[tuple],
+        non_critical_files: List[tuple],
+        template_path: Path,
+        selection_context: str = "",
+        business_context: str = "",
+    ) -> str:
+        """
+        Generate a code review & enhancement report by incrementally editing the CodeReviewTemplate.
+        No screenshot passes needed for code review.
+        """
+        if not self.client:
+            raise RuntimeError("DocumentationGenerator not initialized")
+
+        review_sections = [
+            ("review_info", "Review Information"),
+            ("executive_summary", "Executive Summary"),
+            ("powerfx_review", "Power Fx Formula Review"),
+            ("flow_review", "Power Automate Flow Review"),
+            ("data_review", "Data Model & Connections Review"),
+            ("weak_points", "Weak Points & Risks"),
+            ("enhancements", "Enhancement Suggestions"),
+            ("best_practices", "Best Practice Compliance & Priority Matrix"),
+        ]
+        total_steps = len(critical_files) + len(review_sections)
+
+        try:
+            self._update_progress(
+                session_id, "code_review_initializing", 0, total_steps,
+                "Creating code review template and session"
+            )
+
+            doc_file = working_directory / f"{session_id}_CodeReview.md"
+            import shutil
+            shutil.copy(template_path, doc_file)
+            logger.info(f"Created code review template copy: {doc_file}")
+
+            session_config = {
+                "model": config.COPILOT_MODEL,
+                "working_directory": str(working_directory.parent),
+                "streaming": False,
+                "on_permission_request": lambda req, ctx: (
+                    PermissionRequestResult(kind="denied-by-rules")
+                    if req.kind.value == "shell"
+                    else PermissionRequestResult(kind="approved")
+                ),
+                "system_message": {
+                    "mode": "append",
+                    "content": self._build_qa_system_prompt(
+                        str(doc_file), "code_review"
+                    )
+                }
+            }
+
+            temp_session = await self.client.create_session(session_config)
+            logger.info(f"Created code review session for {session_id}")
+
+            business_section = ""
+            if business_context:
+                business_section = f"\n\n**USER BUSINESS CONTEXT:**\n{business_context}\n"
+
+            current_step = 0
+
+            # PASS 1: Analyze each file for code quality issues
+            for idx, (path, content) in enumerate(critical_files, 1):
+                try:
+                    current_step += 1
+                    self._update_progress(
+                        session_id, "code_review_analyzing", current_step, total_steps,
+                        f"Reviewing code: {Path(path).name}"
+                    )
+
+                    _before_lines = doc_file.read_text(encoding='utf-8').splitlines()
+
+                    prompt = self._build_incremental_review_file_prompt(
+                        path, content, idx, len(critical_files),
+                        str(doc_file), selection_context, business_section
+                    )
+
+                    await temp_session.send_and_wait(
+                        {"prompt": prompt},
+                        timeout=config.DOC_GEN_FILE_TIMEOUT
+                    )
+
+                    _after_lines = doc_file.read_text(encoding='utf-8').splitlines()
+                    _added = max(0, len(_after_lines) - len(_before_lines))
+                    _removed = max(0, len(_before_lines) - len(_after_lines))
+                    _changed = sum(1 for a, b in zip(_before_lines, _after_lines) if a != b)
+                    logger.info(f"✓ Review Pass {idx} complete: +{_added} -{_removed} lines, {_changed} lines changed")
+                    self._update_progress(
+                        session_id, "code_review_analyzing", current_step, total_steps,
+                        f"✓ {Path(path).name}",
+                        diff={"added": _added, "removed": _removed, "changed": _changed}
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(f"Timeout reviewing {path}")
+                except Exception as e:
+                    logger.error(f"Error reviewing {path}: {e}")
+
+            # PASS 2: Section-by-section review generation
+            for sec_idx, (section_id, section_name) in enumerate(review_sections, 1):
+                try:
+                    current_step += 1
+                    self._update_progress(
+                        session_id, "code_review_sections", current_step, total_steps,
+                        f"Generating: {section_name}"
+                    )
+                    _before_lines = doc_file.read_text(encoding='utf-8').splitlines()
+
+                    section_prompt = self._build_review_section_editing_prompt(
+                        section_id=section_id, section_name=section_name,
+                        doc_file_path=str(doc_file), selection_context=selection_context,
+                        business_section=business_section,
+                        files_analyzed=len(critical_files),
+                        critical_files=critical_files,
+                        non_critical_files=non_critical_files,
+                        working_directory=working_directory,
+                    )
+                    await temp_session.send_and_wait(
+                        {"prompt": section_prompt},
+                        timeout=config.DOC_GEN_SECTION_TIMEOUT
+                    )
+
+                    _after_lines = doc_file.read_text(encoding='utf-8').splitlines()
+                    _added = max(0, len(_after_lines) - len(_before_lines))
+                    _removed = max(0, len(_before_lines) - len(_after_lines))
+                    _changed = sum(1 for a, b in zip(_before_lines, _after_lines) if a != b)
+                    logger.info(f"✓ Review Section '{section_id}' complete: +{_added} -{_removed} lines, {_changed} lines changed")
+                    self._update_progress(
+                        session_id, "code_review_sections", current_step, total_steps,
+                        f"✓ {section_name}",
+                        diff={"added": _added, "removed": _removed, "changed": _changed}
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(f"Timeout generating review section '{section_id}'")
+                except Exception as e:
+                    logger.error(f"Error generating review section '{section_id}': {e}")
+
+            documentation = doc_file.read_text(encoding='utf-8')
+            logger.info(f"✓ Code review ready: {len(documentation)} chars")
+
+            try:
+                if hasattr(temp_session, 'close'):
+                    await temp_session.close()
+            except Exception as e:
+                logger.warning(f"Error closing review session: {e}")
+
+            self._update_progress(
+                session_id, "complete", total_steps, total_steps,
+                "Code review generation complete"
+            )
+            return documentation
+
+        except Exception as e:
+            logger.exception(f"Error in code review generation for {session_id}")
+            self._update_progress(session_id, "error", 0, total_steps, f"Error: {str(e)}")
+            raise
+
+    def _build_qa_system_prompt(
+        self,
+        doc_file_path: str,
+        mode: str = "test_scripts",
+        screenshots: Optional[List[Dict[str, Any]]] = None
+    ) -> str:
+        """Build system prompt for QA test scripts or code review generation."""
+        if mode == "test_scripts":
+            role_desc = "Power Platform QA test engineer"
+            task_desc = (
+                "Write comprehensive QA test scripts including functional tests, "
+                "edge cases, boundary tests, and regression scenarios. "
+                "For Power Fx formulas, generate test cases that cover: happy path, empty/null inputs, "
+                "boundary values, delegation limits, error conditions, and concurrent user scenarios. "
+                "For Power Automate flows, generate test cases that cover: trigger conditions, "
+                "action success/failure paths, connector timeouts, run-after configurations, "
+                "and data transformation validation."
+            )
+        else:
+            role_desc = "Senior Power Platform code reviewer and architect"
+            task_desc = (
+                "Perform a thorough code review identifying weak points, security concerns, "
+                "performance bottlenecks, maintainability issues, and enhancement opportunities. "
+                "For Power Fx formulas, evaluate: delegation compliance, complexity, naming conventions, "
+                "variable scoping, error handling patterns, and best practice adherence. "
+                "For Power Automate flows, evaluate: error handling coverage (Scope/try-catch), "
+                "retry policies, run-after configuration, connector efficiency, concurrency settings, "
+                "and throttling risks."
+            )
+
+        screenshot_instructions = self._build_screenshot_system_instructions(screenshots) if screenshots else ""
+
+        return f"""[!] CRITICAL: This is a FILE EDITING task, not a conversation.
+
+YOU MUST USE TOOLS TO EDIT THE FILE. DO NOT WRITE TEXT RESPONSES.
+
+**DOCUMENT FILE:** `{doc_file_path}`
+
+**PROHIBITED ACTIONS:**
+[X] DO NOT write conversational responses describing what you would do
+[X] DO NOT say "I will analyze..." or "Here's what I found..."
+[X] DO NOT provide summaries or explanations in text
+[X] DO NOT describe tool calls - EXECUTE them
+
+**REQUIRED ACTIONS:**
+[OK] USE read_file to check current state
+[OK] USE replace_string_in_file or multi_replace_string_in_file to ACTUALLY edit the file
+[OK] Make the edits directly - your ONLY output should be tool calls
+[OK] Edit the file immediately upon analyzing each component
+
+---
+
+**YOUR ROLE:** {role_desc} using INCREMENTAL EDITING
+
+**YOUR TASK:** {task_desc}
+
+1. Read the current state of `{doc_file_path}`
+2. Identify which sections are relevant to the component you're analyzing
+3. USE replace_string_in_file to fill in those sections with actual content
+4. Preserve template structure and existing content
+
+POWER PLATFORM EXPERTISE:
+- **Power Fx**: Low-code formula language in Canvas Apps — KNOW that:
+  * `Filter()`, `Search()`, `LookUp()` on large tables may NOT be delegable depending on the data source
+  * `Collect()` / `ClearCollect()` load data client-side — risky with large datasets
+  * `Patch()` can silently fail without error handling — always check with `IfError()` or `IsError()`
+  * `Set()` creates global variables, `UpdateContext()` creates screen-scoped — prefer scoped
+  * `Navigate()` with `ScreenTransition` can cause flicker or performance issues
+  * Nested `ForAll()` loops can be extremely slow — O(n²) behavior
+  * `concurrent=true` in `OnStart` can cause race conditions if variables depend on each other
+- **Power Automate (JSON format)**: Workflow definitions where:
+  * `"triggers"` section defines when the flow runs — check trigger conditions carefully
+  * `"actions"` are the steps — look for missing `"runAfter"` failure/error paths
+  * Scope actions should wrap risky operations for try-catch error handling
+  * HTTP connectors without retry policies can cause silent failures
+  * `Apply_to_each` loops without concurrency limits default to sequential
+  * Expression syntax: `@{{triggerBody()?['property']}}` — null-safe `?` operator is critical
+  * Connection references in `"$connections"` — check for hardcoded vs environment variables
+- **Canvas Apps**: Custom UI apps with screens and controls
+- **Dataverse**: Microsoft's cloud database for business data
+
+[TOOLS] **AVAILABLE TOOLS:**
+
+- **read_file**: Read current state of the document file
+- **replace_string_in_file**: Replace specific text in the document
+- **multi_replace_string_in_file**: Make multiple edits at once
+- **grep_search**: Find specific sections in the doc
+
+{screenshot_instructions}
+
+Be precise with edits. Use the tools to actually modify the document file."""
+
+    def _build_incremental_qa_file_prompt(
+        self,
+        path: str,
+        content: str,
+        idx: int,
+        total: int,
+        doc_file_path: str,
+        selection_context: str,
+        business_context: str
+    ) -> str:
+        """Build prompt for analyzing a file and extracting QA test scenarios."""
+        path_lower = path.lower()
+        relevant_sections_hint = ""
+
+        if '.fx.yaml' in path_lower:
+            relevant_sections_hint = """
+**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
+- `### 3.2 Power Fx Formula Validation` — create test cases for each formula:
+  * Happy path: normal expected inputs
+  * Empty/null: what happens with blank fields or empty collections?
+  * Boundary values: max length strings, zero values, negative numbers
+  * Delegation: will this query work with >500/2000 records?
+  * Error conditions: what if Patch fails? What if LookUp returns blank?
+- `### 3.1 Screen Navigation Tests` — test navigation between screens
+- `### 3.3 Data Operations (CRUD)` — test Create/Read/Update/Delete operations
+- `### 3.4 UI Control Behavior` — test visibility, enable/disable, conditional formatting
+"""
+        elif 'canvasmanifest' in path_lower:
+            relevant_sections_hint = """
+**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
+- `## Test Plan Information` — extract solution name, version
+- `### 1.1 Prerequisites` — extract required connections, licenses
+- `### 3.1 Screen Navigation Tests` — extract screen list for navigation tests
+"""
+        elif 'workflows' in path_lower and path_lower.endswith('.json'):
+            relevant_sections_hint = """
+**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
+This is a **Power Automate flow definition** in JSON format.
+- `### 4.1 Flow Trigger Tests` — test trigger conditions (when does/doesn't it fire?)
+- `### 4.2 Flow Action Validation` — test each action: success, failure, timeout
+- `### 4.3 Flow Error Handling Tests` — check run-after config, test failure paths
+- `### 4.4 Flow Data Transformation Tests` — test expressions, data mapping
+- `## 5. Integration Test Scenarios` — if the flow connects to apps or other flows
+"""
+        elif 'datasources' in path_lower:
+            relevant_sections_hint = """
+**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
+- `### 1.2 Connections & Credentials` — document required connections
+- `### 2.1 Required Test Data` — derive test data needs from data source schema
+"""
+        elif 'formulas/' in path_lower:
+            relevant_sections_hint = """
+**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
+This is a **Dataverse formula definition**.
+- `### 3.2 Power Fx Formula Validation` — test calculated columns with edge cases
+- `### 6.3 Delegation & Large Dataset Tests` — Dataverse formulas with large tables
+"""
+        elif 'workflows' in path_lower and path_lower.endswith('.xaml'):
+            relevant_sections_hint = """
+**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
+This is a **Classic Workflow or Business Rule** in XAML format.
+- `### 4.1 Flow Trigger Tests` — test when the rule fires
+- `### 4.3 Flow Error Handling Tests` — test failure scenarios
+- `## 5. Integration Test Scenarios` — test interaction with other components
+"""
+
+        return f"""[!] CRITICAL INSTRUCTION: USE TOOLS TO EDIT THE FILE NOW
+
+This is NOT a conversation. DO NOT write explanatory text.
+Your ONLY valid response is tool calls: read_file, replace_string_in_file, multi_replace_string_in_file.
+
+---
+
+YOUR FIRST ACTION MUST BE:
+read_file(filePath="{doc_file_path}", startLine=1, endLine=100)
+
+After reading, immediately use replace_string_in_file to edit relevant sections.
+
+---
+
+[TARGET] QA TEST SCENARIO EXTRACTION (File {idx} of {total})
+
+{selection_context}
+{business_context}
+
+[FILE] **TEST SCRIPTS FILE TO EDIT:** `{doc_file_path}`
+
+[FOLDER] **SOURCE FILE TO ANALYZE:**
+**Path:** `{path}`
+
+```
+{content[:15000]}{"..." if len(content) > 15000 else ""}
+```
+
+{relevant_sections_hint}
+
+---
+
+[TOOL] **YOUR TASK — EXTRACT TEST SCENARIOS:**
+
+1. **Read** the current test scripts file: `{doc_file_path}`
+
+2. **Analyze** the source file and identify TESTABLE BEHAVIORS:
+   - For **Power Fx (.fx.yaml)**: Each formula is a test target. Ask:
+     * What is the HAPPY PATH? (normal expected behavior)
+     * What happens with EMPTY or NULL inputs?
+     * What are the BOUNDARY values? (max lengths, zero, negatives)
+     * Is this query DELEGABLE? What happens with >2000 records?
+     * What if the data operation FAILS? (Patch, SubmitForm, Remove)
+     * Are there RACE CONDITIONS? (concurrent variable updates)
+   - For **Power Automate flows (.json)**: Each trigger/action is a test target. Ask:
+     * Does the TRIGGER fire correctly? When should it NOT fire?
+     * What if an ACTION fails? Is there error handling?
+     * What if a CONNECTOR times out or is throttled?
+     * Are EXPRESSIONS correct? What about null values in expressions?
+     * What if the input DATA is malformed or missing fields?
+   - For **Data sources**: What test data is needed? What are the constraints?
+
+3. **Edit** the test scripts file to add test cases in proper table format:
+   - Use the Test ID convention: NAV-001, FX-001, TRIG-001, ACT-001, etc.
+   - Include SPECIFIC steps, not generic ones
+   - Include EXACT expected results based on the actual formula/flow logic
+   - Set priority: High for core business logic, Medium for secondary, Low for edge cases
+
+4. **Be SPECIFIC** — reference actual control names, formula text, flow action names from the source code.
+
+---
+
+[START] BEGIN WITH TOOL USAGE IMMEDIATELY - NO TEXT RESPONSES."""
+
+    def _build_incremental_review_file_prompt(
+        self,
+        path: str,
+        content: str,
+        idx: int,
+        total: int,
+        doc_file_path: str,
+        selection_context: str,
+        business_context: str
+    ) -> str:
+        """Build prompt for analyzing a file for code review findings."""
+        path_lower = path.lower()
+        relevant_sections_hint = ""
+
+        if '.fx.yaml' in path_lower:
+            relevant_sections_hint = """
+**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
+- `### 2.1 Formula Complexity Analysis` — evaluate each formula:
+  * Is it readable? Too deeply nested? Too long?
+  * Does it follow naming conventions? (camelCase vars, PascalCase screens)
+  * Is delegation handled correctly? Non-delegable queries on large tables?
+  * Is there proper error handling? (IfError, IsError after Patch/SubmitForm)
+  * Are there hardcoded values that should be variables or config?
+- `### 2.2 Variable & Collection Usage` — document variables and scope issues
+- `### 2.3 Delegation Warnings` — list all non-delegable patterns
+- `### 5.2 Performance Bottlenecks` — nested ForAll, large ClearCollect, etc.
+- `### 5.3 Reliability & Error Handling Gaps` — missing error handling
+- `### 5.4 Maintainability Concerns` — magic numbers, duplicated logic
+"""
+        elif 'workflows' in path_lower and path_lower.endswith('.json'):
+            relevant_sections_hint = """
+**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
+This is a **Power Automate flow definition** in JSON.
+- `### 3.1 Flow Architecture Review` — document structure, trigger, action count
+- `### 3.2 Connector Usage Analysis` — list connectors, throttling risk
+- `### 3.3 Error Handling Assessment` — check for Scope try-catch, run-after config
+- `### 5.1 Security Concerns` — hardcoded URLs, exposed connection strings
+- `### 5.2 Performance Bottlenecks` — unoptimized loops, missing pagination
+- `### 5.3 Reliability & Error Handling Gaps` — missing failure paths
+"""
+        elif 'canvasmanifest' in path_lower:
+            relevant_sections_hint = """
+**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
+- `## Review Information` — solution name, version
+- `### 1.2 Key Metrics` — screen count, component count
+"""
+        elif 'datasources' in path_lower:
+            relevant_sections_hint = """
+**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
+- `### 4.1 Data Source Assessment` — data source type, security model
+- `### 4.2 Connection Security Review` — authentication, sharing model
+"""
+        elif 'formulas/' in path_lower:
+            relevant_sections_hint = """
+**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
+This is a **Dataverse formula definition**.
+- `### 2.1 Formula Complexity Analysis` — evaluate calculated column formulas
+- `### 2.3 Delegation Warnings` — check for large dataset issues
+- `### 4.3 Data Integrity Risks` — formula correctness, edge cases
+"""
+        elif 'workflows' in path_lower and path_lower.endswith('.xaml'):
+            relevant_sections_hint = """
+**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
+This is a **Classic Workflow or Business Rule** in XAML.
+- `### 3.1 Flow Architecture Review` — document structure and conditions
+- `### 5.3 Reliability & Error Handling Gaps` — missing condition branches
+- `### 5.4 Maintainability Concerns` — complexity, readability
+"""
+
+        return f"""[!] CRITICAL INSTRUCTION: USE TOOLS TO EDIT THE FILE NOW
+
+This is NOT a conversation. DO NOT write explanatory text.
+Your ONLY valid response is tool calls: read_file, replace_string_in_file, multi_replace_string_in_file.
+
+---
+
+YOUR FIRST ACTION MUST BE:
+read_file(filePath="{doc_file_path}", startLine=1, endLine=100)
+
+After reading, immediately use replace_string_in_file to edit relevant sections.
+
+---
+
+[TARGET] CODE REVIEW ANALYSIS (File {idx} of {total})
+
+{selection_context}
+{business_context}
+
+[FILE] **CODE REVIEW FILE TO EDIT:** `{doc_file_path}`
+
+[FOLDER] **SOURCE FILE TO REVIEW:**
+**Path:** `{path}`
+
+```
+{content[:15000]}{"..." if len(content) > 15000 else ""}
+```
+
+{relevant_sections_hint}
+
+---
+
+[TOOL] **YOUR TASK — CODE REVIEW:**
+
+1. **Read** the current code review file: `{doc_file_path}`
+
+2. **Review** the source file critically. For each formula/action/component, evaluate:
+   - **Correctness**: Does the logic do what it's supposed to?
+   - **Error Handling**: What happens when things fail? Is there IfError/IsError? Scope try-catch?
+   - **Delegation**: Will queries work with large datasets (>500/2000 records)?
+   - **Security**: Any hardcoded values, exposed secrets, missing validation?
+   - **Performance**: Nested loops, unnecessary data loading, non-delegable queries?
+   - **Maintainability**: Naming conventions, code duplication, magic numbers, complexity?
+   - **Best Practices**: Does it follow Power Platform recommended patterns?
+
+3. **Edit** the code review file:
+   - Add findings to the relevant tables (SEC-001, PERF-001, REL-001, MAINT-001 etc.)
+   - Include SPECIFIC code snippets showing the issue
+   - Provide CONCRETE recommendations with corrected code examples where possible
+   - Rate severity: 🔴 Critical | 🟠 High | 🟡 Medium | 🟢 Low
+
+4. **Be SPECIFIC** — reference actual formula text, action names, variable names from the source code.
+
+---
+
+[START] BEGIN WITH TOOL USAGE IMMEDIATELY - NO TEXT RESPONSES."""
+
+    def _build_qa_section_editing_prompt(
+        self,
+        section_id: str,
+        section_name: str,
+        doc_file_path: str,
+        selection_context: str,
+        business_section: str,
+        files_analyzed: int,
+        critical_files: List[tuple],
+        non_critical_files: List[tuple],
+        working_directory: Path,
+    ) -> str:
+        """Build a focused prompt for editing one specific QA test scripts section."""
+        files_inventory = ""
+        if section_id in ("canvas_tests", "flow_tests", "integration_tests", "test_environment"):
+            files_inventory = self._build_files_inventory(
+                critical_files, non_critical_files, working_directory
+            )
+
+        section_instructions = {
+            "test_plan_info": f"""[TARGET] **SECTION: Test Plan Information**
+
+Edit the top of `{doc_file_path}` to fill in:
+
+1. **Solution Name** — extract from data already in the doc or metadata
+2. **Version Under Test** — from manifest or "1.0.0"
+3. **Date** — today's date
+4. **Prepared By** — "Auto-generated QA Test Scripts"
+5. **Test Environment** — "Sandbox" (default recommendation for testing)
+6. **Test Scope** — synthesize from the components analyzed
+
+Only edit the `## Test Plan Information` block.""",
+
+            "test_environment": f"""[TARGET] **SECTIONS 1 & 2: Test Environment Setup & Test Data Requirements**
+
+Edit `{doc_file_path}` to fill Sections 1 and 2:
+
+1. **Section 1 — Test Environment Setup:**
+   - **1.1 Prerequisites:** List required licenses, security roles, browsers
+   - **1.2 Connections & Credentials:** List all data connections found in the analyzed files
+     (DO NOT include actual credentials — only types and how to obtain them)
+   - **1.3 Environment Configuration:** Any feature flags or settings needed
+
+2. **Section 2 — Test Data Requirements:**
+   - **2.1 Required Test Data:** Based on data sources and entity references found in the code,
+     list what test data records are needed (entities, field values, record counts)
+   - **2.2 Test Data Setup Steps:** How to prepare the test environment
+   - **2.3 Data Cleanup Procedure:** How to reset after testing
+
+{files_inventory}
+
+Only edit Sections 1-2.""",
+
+            "canvas_tests": f"""[TARGET] **SECTION 3: Canvas App Test Scenarios**
+
+Edit `{doc_file_path}` to complete Section 3 with specific, actionable test cases:
+
+1. **Read the doc** to see what test scenarios were extracted from file analysis passes
+2. **Fill gaps and enhance** the subsections:
+   - **3.1 Screen Navigation Tests:** Ensure all screens have navigation test cases
+   - **3.2 Power Fx Formula Validation:** For EVERY significant formula:
+     * Generate happy path test case
+     * Generate empty/null input test case
+     * Generate boundary value test case (if applicable)
+     * Generate error condition test case (if the formula does data operations)
+     * Generate delegation test case (if the formula uses Filter/Search/LookUp)
+   - **3.3 Data Operations (CRUD):** Test every Patch, SubmitForm, Remove, Collect operation
+   - **3.4 UI Control Behavior:** Test visibility conditions, enable/disable, conditional formatting
+3. **De-duplicate** test cases and ensure proper Test ID numbering
+4. **Assign priorities:** High = core business logic, Medium = secondary features, Low = cosmetic/edge cases
+
+{files_inventory}
+
+Only edit Section 3.""",
+
+            "flow_tests": f"""[TARGET] **SECTION 4: Power Automate Flow Test Scenarios**
+
+Edit `{doc_file_path}` to complete Section 4 with specific flow test cases:
+
+1. **Read the doc** to see what test scenarios exist from file analysis passes
+2. **Fill gaps and enhance:**
+   - **4.1 Flow Trigger Tests:** For each flow:
+     * Test that the trigger fires with valid conditions
+     * Test that the trigger does NOT fire with invalid conditions
+     * Test scheduled triggers with correct timing
+   - **4.2 Flow Action Validation:** For each significant action:
+     * Test successful execution with valid data
+     * Test with invalid/missing input data
+     * Test connector timeout scenarios
+   - **4.3 Flow Error Handling Tests:** For each flow:
+     * Does the flow have Scope-based try-catch? If not, note this as a gap
+     * Test what happens when each connector fails
+     * Verify run-after configurations work correctly
+   - **4.4 Flow Data Transformation Tests:** Test expression logic and data mapping
+3. **Be SPECIFIC** about which flow action to test and what data to use
+
+Only edit Section 4.""",
+
+            "integration_tests": f"""[TARGET] **SECTION 5: Integration Test Scenarios**
+
+Edit `{doc_file_path}` to fill Section 5 — Integration Tests:
+
+1. **Read the doc** to understand what Canvas Apps and flows exist
+2. **Identify cross-component interactions:**
+   - Canvas App triggering a Power Automate flow (via PowerAutomate.Run or button)
+   - Flow writing data that the Canvas App reads
+   - Multiple flows triggered in sequence
+   - Shared data sources across components
+3. **Write end-to-end test scenarios** that test the full chain:
+   - User action in Canvas App → triggers flow → flow completes → data visible in app
+   - Include EXACT steps for each integration test
+   - Include expected intermediate states, not just final result
+4. If no integration points are found, note that and suggest manual verification
+
+Only edit Section 5.""",
+
+            "edge_boundary": f"""[TARGET] **SECTION 6: Edge Case & Boundary Tests**
+
+Edit `{doc_file_path}` to fill Section 6:
+
+1. **Read the doc** to see what components/formulas/flows exist
+2. **Fill subsections:**
+   - **6.1 Input Boundary Tests:** For every user input field found:
+     * Empty/null input
+     * Maximum length (if text)
+     * Special characters (quotes, HTML, unicode)
+     * Zero/negative (if numeric)
+     * Future/past dates (if date picker)
+   - **6.2 State & Timing Edge Cases:**
+     * App opened on mobile vs desktop
+     * Network disconnection during data operation
+     * Session timeout during long workflow
+     * Browser back button behavior
+     * Concurrent users editing same record
+   - **6.3 Delegation & Large Dataset Tests:**
+     * Identify ALL non-delegable queries from the formula analysis
+     * For each: what happens with 500+ records? 2000+ records?
+     * Document the delegation limit and expected behavior
+
+Only edit Section 6.""",
+
+            "perf_security_a11y": f"""[TARGET] **SECTIONS 7, 8, 9: Performance, Security & Accessibility**
+
+Edit `{doc_file_path}` to fill Sections 7-9:
+
+1. **Section 7 — Performance Tests:**
+   - App load time (target <5s)
+   - Gallery/list rendering with large datasets
+   - Flow execution time for each flow
+   - Concurrent user scenarios
+
+2. **Section 8 — Security & Access Tests:**
+   - Test with correct security role → full access
+   - Test without required role → access denied
+   - Test data visibility across different roles
+   - Test direct URL/deep link access
+   - Note if role-based testing isn't applicable, explain why
+
+3. **Section 9 — Accessibility Tests:**
+   - Standard WCAG 2.1 test scenarios
+   - Keyboard-only navigation
+   - Screen reader compatibility
+   - Color contrast
+   - Error identification
+
+Replace placeholder text with specific or standardized test cases.
+
+Only edit Sections 7-9.""",
+
+            "regression_checklist": f"""[TARGET] **SECTION 10 + Appendix: Regression Checklist & Final Cleanup**
+
+Edit `{doc_file_path}` to complete Section 10, Appendix, and Table of Contents:
+
+**Part A — Section 10 Regression Test Checklist:**
+1. Review the entire document and identify the TOP 10-15 most critical test scenarios
+2. Add them to the regression table with their Test ID reference
+3. These should cover: core navigation, main CRUD operations, key flow triggers, critical formulas
+
+**Part B — Appendix Test Execution Log:**
+- Leave as a blank template for testers to fill in during execution
+
+**Part C — Table of Contents:**
+Read the full document and generate a proper Table of Contents with markdown links.
+
+**Part D — Final cleanup:**
+- Replace any remaining template placeholders with actual content or "N/A"
+- Ensure all Test IDs are properly numbered (no gaps, no duplicates)
+- Ensure consistent table formatting
+- Remove any raw template instructions (lines starting with `>`)
+
+Edit Section 10, Appendix, Table of Contents, and do final cleanup.""",
+        }
+
+        instruction = section_instructions.get(section_id, f"Complete the {section_name} section.")
+
+        return f"""[!] CRITICAL: SECTION EDITING TASK — USE TOOLS ONLY
+
+DO NOT write text. USE read_file and replace_string_in_file to edit `{doc_file_path}`.
+
+---
+
+{selection_context}
+
+**TEST SCRIPTS FILE:** `{doc_file_path}`
+**You have analyzed {files_analyzed} files in previous passes.**
+
+---
+
+{instruction}
+
+---
+
+[EDIT] **GUIDELINES:**
+
+[OK] **DO:**
+- Read the file first with read_file to see current state
+- Use replace_string_in_file for precise edits
+- Include 3-5 lines of context in oldString for accurate matching
+- Generate SPECIFIC test cases with actual component/formula names from the analysis
+- Preserve content from other sections
+
+[STOP] **DON'T:**
+- Don't write conversational text — only use tools
+- Don't edit sections outside your assigned scope
+- Don't remove content added by earlier passes
+- Don't use generic placeholder test cases — be specific to the actual solution
+
+[START] **BEGIN IMMEDIATELY WITH TOOL CALLS.**"""
+
+    def _build_review_section_editing_prompt(
+        self,
+        section_id: str,
+        section_name: str,
+        doc_file_path: str,
+        selection_context: str,
+        business_section: str,
+        files_analyzed: int,
+        critical_files: List[tuple],
+        non_critical_files: List[tuple],
+        working_directory: Path,
+    ) -> str:
+        """Build a focused prompt for editing one specific code review section."""
+        files_inventory = ""
+        if section_id in ("powerfx_review", "flow_review", "data_review"):
+            files_inventory = self._build_files_inventory(
+                critical_files, non_critical_files, working_directory
+            )
+
+        section_instructions = {
+            "review_info": f"""[TARGET] **SECTION: Review Information**
+
+Edit the top of `{doc_file_path}` to fill in:
+
+1. **Solution Name** — extract from data already in the doc
+2. **Version Reviewed** — from manifest or "1.0.0"
+3. **Date** — today's date
+4. **Reviewed By** — "Auto-generated Code Review"
+5. **Review Scope** — synthesize from component analysis
+6. **Overall Risk Rating** — assess based on findings in the doc so far
+   (🟢 Low = no major issues | 🟡 Medium = some concerns | 🟠 High = significant issues | 🔴 Critical = blocking issues)
+
+Only edit the `## Review Information` block.""",
+
+            "executive_summary": f"""[TARGET] **SECTION 1: Executive Summary**
+
+Edit `{doc_file_path}` to fill Section 1:
+
+1. **1.1 Overall Assessment:** Write 2-3 paragraphs summarizing:
+   - Overall code quality and architectural soundness
+   - Most significant findings (positive and negative)
+   - Readiness for production / areas requiring attention
+2. **1.2 Key Metrics:** Fill the metrics table with actual counts from the analysis
+3. **1.3 Risk Summary:** Count findings by severity level from the tables already populated
+
+{business_section}
+
+Read the entire document first to understand what was found in earlier passes.
+Only edit Section 1.""",
+
+            "powerfx_review": f"""[TARGET] **SECTION 2: Power Fx Formula Review**
+
+Edit `{doc_file_path}` to complete Section 2:
+
+1. **Read the doc** to see what formula findings exist from file analysis passes
+2. **Fill gaps and enhance:**
+   - **2.1 Formula Complexity Analysis:** For each screen's formulas:
+     * Rate complexity (Simple / Moderate / Complex / Very Complex)
+     * Check delegation compliance (Delegable / Non-delegable / Mixed)
+     * List specific issues and recommendations with code examples
+   - **2.2 Variable & Collection Usage:** Document all variables/collections:
+     * Name, type (Set/UpdateContext/Collect), scope, where set/used
+     * Flag scope issues (global when should be local)
+   - **2.3 Delegation Warnings:** Comprehensive list of non-delegable patterns:
+     * The exact formula, why it's non-delegable, the impact, and the fix
+3. **Provide corrected code examples** where issues are found
+
+{files_inventory}
+
+Only edit Section 2.""",
+
+            "flow_review": f"""[TARGET] **SECTION 3: Power Automate Flow Review**
+
+Edit `{doc_file_path}` to complete Section 3:
+
+1. **Read the doc** to see what flow review findings exist
+2. **Fill gaps and enhance:**
+   - **3.1 Flow Architecture Review:** For each flow:
+     * Trigger type, action count, error handling presence
+     * Scope usage, retry policies, concurrency settings
+     * Detailed findings paragraph with specific issues
+   - **3.2 Connector Usage Analysis:** List all connectors:
+     * Which flows use them, action count, throttling risk
+     * Authentication type and concerns
+   - **3.3 Error Handling Assessment:** For each flow:
+     * What error strategy exists (Scope/try-catch, run-after, none)
+     * Coverage level (Full / Partial / None)
+     * Missing scenarios that should be handled
+3. **Provide specific recommendations** with JSON examples where relevant
+
+{files_inventory}
+
+Only edit Section 3.""",
+
+            "data_review": f"""[TARGET] **SECTION 4: Data Model & Connections Review**
+
+Edit `{doc_file_path}` to fill Section 4:
+
+1. **4.1 Data Source Assessment:** List all data sources with type and security model
+2. **4.2 Connection Security Review:**
+   - Authentication type for each connection
+   - Connection sharing model (shared vs per-user)
+   - Whether environment variables are used for connection references
+3. **4.3 Data Integrity Risks:**
+   - Race conditions (concurrent writes to same record)
+   - Partial updates (multi-step operations without transactions)
+   - Orphaned records (deletions without cascade)
+   - Missing validation at data layer
+
+{files_inventory}
+
+Only edit Section 4.""",
+
+            "weak_points": f"""[TARGET] **SECTION 5: Weak Points & Risks**
+
+Edit `{doc_file_path}` to complete Section 5:
+
+1. **Read the doc** to consolidate findings from earlier passes
+2. **Fill/enhance each subsection:**
+   - **5.1 Security Concerns:** Hardcoded values, missing validation, excessive permissions
+   - **5.2 Performance Bottlenecks:** Non-delegable queries, nested loops, large data loads
+   - **5.3 Reliability & Error Handling Gaps:** Missing error handling, silent failures
+   - **5.4 Maintainability Concerns:** Magic numbers, naming issues, code duplication
+3. **Rate each finding:** Severity (🔴🟠🟡🟢) and provide specific location + recommendation
+4. **De-duplicate** findings that may have been captured in multiple passes
+
+Only edit Section 5.""",
+
+            "enhancements": f"""[TARGET] **SECTION 6: Enhancement Suggestions**
+
+Edit `{doc_file_path}` to fill Section 6:
+
+1. **Read the doc** to understand all findings and weak points
+2. **Categorize enhancements:**
+   - **6.1 Quick Wins:** Low effort, high impact — e.g., add error handling to Patch calls,
+     fix naming conventions, add Notify() for user feedback
+   - **6.2 Medium Effort:** Moderate changes — e.g., refactor complex formulas,
+     add Scope error handling to flows, implement delegation-safe patterns
+   - **6.3 Major Refactoring:** Significant work — e.g., redesign data model,
+     replace non-delegable queries with stored procedures, implement component libraries
+3. **For each enhancement:** Include current state, proposed change, and expected benefit
+
+Only edit Section 6.""",
+
+            "best_practices": f"""[TARGET] **SECTIONS 7 & 8: Best Practice Compliance & Priority Matrix**
+
+Edit `{doc_file_path}` to fill Sections 7-8 and do final cleanup:
+
+**Section 7 — Best Practice Compliance:**
+1. **7.1 Naming Conventions:** Assess against Power Platform naming standards
+2. **7.2 Architecture & Design Patterns:** Check separation of concerns, error handling, etc.
+3. **7.3 ALM & Deployment Readiness:** Solution layering, environment variables, CI/CD readiness
+
+**Section 8 — Priority Matrix:**
+1. Review ALL findings from the entire document (Sections 2-6)
+2. Create a prioritized list: rank by severity × effort
+3. Top priorities: Critical severity + Low effort first, then High severity, etc.
+
+**Appendix — Files Reviewed:**
+List all files that were analyzed with type and key observations.
+
+**Table of Contents:**
+Read the full document and generate a proper Table of Contents.
+
+**Final cleanup:**
+- Replace remaining template placeholders with actual content or "N/A"
+- Ensure consistent severity ratings across all tables
+- Remove raw template instructions (lines starting with `>`)
+- Ensure consistent markdown formatting
+
+Edit Sections 7-8, Appendix, Table of Contents, and do final cleanup.""",
+        }
+
+        instruction = section_instructions.get(section_id, f"Complete the {section_name} section.")
+
+        return f"""[!] CRITICAL: SECTION EDITING TASK — USE TOOLS ONLY
+
+DO NOT write text. USE read_file and replace_string_in_file to edit `{doc_file_path}`.
+
+---
+
+{selection_context}
+
+**CODE REVIEW FILE:** `{doc_file_path}`
+**You have analyzed {files_analyzed} files in previous passes.**
+
+---
+
+{instruction}
+
+---
+
+[EDIT] **GUIDELINES:**
+
+[OK] **DO:**
+- Read the file first with read_file to see current state
+- Use replace_string_in_file for precise edits
+- Include 3-5 lines of context in oldString for accurate matching
+- Be SPECIFIC — reference actual formula text, action names, variable names
+- Include code examples: "current code → recommended code"
+- Preserve content from other sections
+
+[STOP] **DON'T:**
+- Don't write conversational text — only use tools
+- Don't edit sections outside your assigned scope
+- Don't remove content added by earlier passes
+- Don't be vague — every finding must reference specific code
+
+[START] **BEGIN IMMEDIATELY WITH TOOL CALLS.**"""
+
     
 # Global singleton instance
 _doc_generator: Optional[DocumentationGenerator] = None

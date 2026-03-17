@@ -1849,7 +1849,308 @@ All components in the solution are included for documentation.
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/download/{session_id}/{filename}")
+@app.post("/generate-qa/{session_id}", response_model=DocumentationFiles)
+async def generate_qa_test_scripts(
+    session_id: str,
+    business_context: Optional[str] = Body(None, embed=True)
+):
+    """
+    Generate QA test scripts and code review documents for selected components.
+    Produces two documents: TestScripts.md and CodeReview.md.
+    """
+    try:
+        if business_context:
+            business_context = business_context.strip()
+            logger.info(f"QA business context provided: {business_context[:100]}...")
+
+        session_dir = get_session_dir(session_id)
+        extract_dir = session_dir / "extracted"
+        selection_file = session_dir / "selected_components.json"
+
+        if not session_dir.exists() or not extract_dir.exists():
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        selected_components = []
+        if selection_file.exists():
+            with open(selection_file, 'r', encoding='utf-8') as f:
+                selected_components = json.load(f)
+
+        logger.info(f"Generating QA documents for session {session_id} with {len(selected_components)} selected components")
+
+        # Build list of files to analyze — same logic as generate_documentation
+        files_to_analyze = []
+        if not selected_components:
+            for item in extract_dir.rglob("*_src"):
+                if item.is_dir():
+                    files_to_analyze.append(str(item.relative_to(extract_dir)))
+            workflows_dir = extract_dir / "Workflows"
+            if workflows_dir.exists():
+                for json_file in workflows_dir.glob("*.json"):
+                    if not json_file.stem.endswith("-ConnectionReferences"):
+                        files_to_analyze.append(str(json_file.relative_to(extract_dir)))
+                for xaml_file in workflows_dir.glob("*.xaml"):
+                    files_to_analyze.append(str(xaml_file.relative_to(extract_dir)))
+            formulas_dir = extract_dir / "Formulas"
+            if formulas_dir.exists():
+                for formula_file in formulas_dir.iterdir():
+                    if formula_file.suffix in ('.yaml', '.xaml'):
+                        files_to_analyze.append(str(formula_file.relative_to(extract_dir)))
+        else:
+            for sel in selected_components:
+                normalized_sel = sel.replace('\\', '/')
+                if normalized_sel.endswith('.msapp'):
+                    msapp_stem = Path(normalized_sel).stem
+                    for item in extract_dir.rglob("*_src"):
+                        if item.is_dir() and item.name.startswith(msapp_stem):
+                            files_to_analyze.append(str(item.relative_to(extract_dir)))
+                            break
+                elif normalized_sel.startswith("Workflows/") and normalized_sel.endswith('.json'):
+                    selected_filename = Path(normalized_sel).name
+                    workflows_dir = extract_dir / "Workflows"
+                    if workflows_dir.exists():
+                        workflow_file = workflows_dir / selected_filename
+                        if workflow_file.exists() and not selected_filename.endswith("-ConnectionReferences.json"):
+                            files_to_analyze.append(str(workflow_file.relative_to(extract_dir)))
+                elif normalized_sel.startswith("Workflows/") and normalized_sel.endswith('.xaml'):
+                    selected_filename = Path(normalized_sel).name
+                    workflows_dir = extract_dir / "Workflows"
+                    if workflows_dir.exists():
+                        xaml_file = workflows_dir / selected_filename
+                        if xaml_file.exists():
+                            files_to_analyze.append(str(xaml_file.relative_to(extract_dir)))
+                elif normalized_sel.startswith("Formulas/"):
+                    selected_filename = Path(normalized_sel).name
+                    formulas_dir = extract_dir / "Formulas"
+                    if formulas_dir.exists():
+                        formula_file = formulas_dir / selected_filename
+                        if formula_file.exists():
+                            files_to_analyze.append(str(formula_file.relative_to(extract_dir)))
+
+        # Read file contents
+        file_contents = {}
+        for file_path_str in files_to_analyze:
+            full_path = extract_dir / file_path_str
+            try:
+                if full_path.is_dir():
+                    manifest_path = full_path / "CanvasManifest.json"
+                    if manifest_path.exists():
+                        file_contents[f"{file_path_str}/CanvasManifest.json"] = manifest_path.read_text(encoding='utf-8')
+                    for fx_file in full_path.rglob("*.fx.yaml"):
+                        rel_path = fx_file.relative_to(extract_dir)
+                        file_contents[str(rel_path)] = fx_file.read_text(encoding='utf-8')
+                    data_sources_dir = full_path / "DataSources"
+                    if data_sources_dir.exists():
+                        for ds_file in data_sources_dir.glob("*.json"):
+                            rel_path = ds_file.relative_to(extract_dir)
+                            file_contents[str(rel_path)] = ds_file.read_text(encoding='utf-8')
+                    editor_state_dir = full_path / "src" / "EditorState"
+                    if editor_state_dir.exists():
+                        for es_file in editor_state_dir.glob("*.json"):
+                            rel_path = es_file.relative_to(extract_dir)
+                            file_contents[str(rel_path)] = es_file.read_text(encoding='utf-8')
+                else:
+                    file_contents[file_path_str] = full_path.read_text(encoding='utf-8')
+            except Exception as e:
+                logger.warning(f"Could not read {file_path_str}: {e}")
+
+        solution_xml_path = extract_dir / "solution.xml"
+        if not solution_xml_path.exists():
+            solution_xml_path = extract_dir / "Other" / "solution.xml"
+        if solution_xml_path.exists() and "solution.xml" not in file_contents:
+            try:
+                file_contents["solution.xml"] = solution_xml_path.read_text(encoding='utf-8')
+            except Exception as e:
+                logger.warning(f"Could not read solution.xml: {e}")
+
+        prioritized_files = _prioritize_files_for_analysis(file_contents)
+        critical_files, non_critical_files = _separate_critical_files(prioritized_files)
+        logger.info(f"QA generation: {len(critical_files)} critical, {len(non_critical_files)} non-critical files")
+
+        # Build selection context
+        selection_context = ""
+        if selected_components:
+            component_count = len(selected_components)
+            component_word = "component" if component_count == 1 else "components"
+            canvas_apps = [c for c in selected_components if c.endswith('.msapp')]
+            workflows = [c for c in selected_components if c.startswith('Workflows/') and c.endswith('.json')]
+            classic_wfs = [c for c in selected_components if c.startswith('Workflows/') and c.endswith('.xaml')]
+            dv_formulas = [c for c in selected_components if c.startswith('Formulas/')]
+            component_summary = []
+            if canvas_apps:
+                component_summary.append(f"{len(canvas_apps)} Canvas App{'s' if len(canvas_apps) > 1 else ''}")
+            if workflows:
+                component_summary.append(f"{len(workflows)} Power Automate Flow{'s' if len(workflows) > 1 else ''}")
+            if classic_wfs:
+                component_summary.append(f"{len(classic_wfs)} Classic Workflow{'s' if len(classic_wfs) > 1 else ''}")
+            if dv_formulas:
+                component_summary.append(f"{len(dv_formulas)} Dataverse Formula{'s' if len(dv_formulas) > 1 else ''}")
+            summary_text = " and ".join(component_summary) if component_summary else f"{component_count} {component_word}"
+            selection_context = f"""
+⚠️ IMPORTANT - SCOPE LIMITATION:
+The user has selected {summary_text} for QA analysis:
+{chr(10).join(f"  • {comp}" for comp in selected_components)}
+
+🚫 DO NOT analyze components outside this selection.
+✅ ONLY generate test scenarios and review findings for the selected components.
+"""
+        else:
+            selection_context = "\nℹ️ SCOPE: Complete solution QA analysis — all components included.\n"
+
+        # Load screenshots
+        screenshot_data = []
+        screenshots_meta = _load_screenshot_metadata(session_id)
+        if screenshots_meta:
+            screenshots_dir = _get_screenshots_dir(session_id)
+            for ss in screenshots_meta:
+                original_path = str(screenshots_dir / ss.filename)
+                stem = Path(ss.filename).stem
+                suffix = Path(ss.filename).suffix
+                optimized_file = screenshots_dir / f"{stem}_optimized{suffix}"
+                ai_path = str(optimized_file) if optimized_file.exists() else original_path
+                screenshot_data.append({
+                    'path': original_path,
+                    'ai_path': ai_path,
+                    'context': ss.context,
+                    'component_path': ss.component_path,
+                    'mime_type': ss.mime_type,
+                })
+
+        # Get doc generator and mark session as generating
+        doc_gen = await get_doc_generator()
+        _managed = session_manager.sessions.get(session_id)
+        if _managed:
+            _managed.is_generating = True
+            _managed.update_last_activity()
+
+        try:
+            # Get solution info for filenames
+            solution_info_data = {}
+            try:
+                analyzer = SolutionAnalyzer(str(extract_dir))
+                analysis_data = analyzer.generate_report()
+                solution_info_data = analysis_data.get('solution_info', {})
+            except Exception as e:
+                logger.warning(f"Could not run static analyzer: {e}")
+            project_name = solution_info_data.get('unique_name', 'PowerPlatformSolution')
+
+            output_dir = get_output_dir(session_id)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            markdown_files = []
+
+            # ---- Generate Test Scripts ----
+            test_scripts_template = config.TEMPLATES_DIR / "TestScriptsTemplate.md"
+            logger.info(f"Starting QA test scripts generation for {len(critical_files)} critical files...")
+
+            test_scripts_content = await doc_gen.generate_test_scripts(
+                session_id=session_id,
+                working_directory=extract_dir,
+                critical_files=critical_files,
+                non_critical_files=non_critical_files,
+                template_path=test_scripts_template,
+                selection_context=selection_context,
+                business_context=business_context or "",
+                screenshots=screenshot_data if screenshot_data else None
+            )
+
+            # Post-process screenshots for test scripts
+            if screenshots_meta:
+                screenshots_dir = _get_screenshots_dir(session_id)
+                images_output_dir = output_dir / "images"
+                images_output_dir.mkdir(parents=True, exist_ok=True)
+                for ss in screenshots_meta:
+                    src = screenshots_dir / ss.filename
+                    dst = images_output_dir / ss.filename
+                    if src.exists() and not dst.exists():
+                        shutil.copy2(src, dst)
+                test_scripts_content = _post_process_screenshots(
+                    test_scripts_content, screenshots_meta, screenshots_dir
+                )
+
+            # Build test scripts filename
+            if selected_components and len(selected_components) == 1:
+                comp_name = Path(selected_components[0]).stem.replace('-', '_').replace(' ', '_')
+                ts_file = output_dir / f"{project_name}_{comp_name}_TestScripts.md"
+            elif selected_components:
+                ts_file = output_dir / f"{project_name}_{len(selected_components)}Components_TestScripts.md"
+            else:
+                ts_file = output_dir / f"{project_name}_TestScripts.md"
+
+            ts_file.write_text(test_scripts_content, encoding='utf-8')
+            markdown_files.append(ts_file.name)
+            logger.info(f"✓ Test scripts saved: {ts_file.name}")
+
+            # ---- Generate Code Review ----
+            code_review_template = config.TEMPLATES_DIR / "CodeReviewTemplate.md"
+            logger.info(f"Starting code review generation...")
+
+            code_review_content = await doc_gen.generate_code_review(
+                session_id=session_id,
+                working_directory=extract_dir,
+                critical_files=critical_files,
+                non_critical_files=non_critical_files,
+                template_path=code_review_template,
+                selection_context=selection_context,
+                business_context=business_context or "",
+            )
+
+            # Build code review filename
+            if selected_components and len(selected_components) == 1:
+                cr_file = output_dir / f"{project_name}_{comp_name}_CodeReview.md"
+            elif selected_components:
+                cr_file = output_dir / f"{project_name}_{len(selected_components)}Components_CodeReview.md"
+            else:
+                cr_file = output_dir / f"{project_name}_CodeReview.md"
+
+            cr_file.write_text(code_review_content, encoding='utf-8')
+            markdown_files.append(cr_file.name)
+            logger.info(f"✓ Code review saved: {cr_file.name}")
+
+            return DocumentationFiles(
+                session_id=session_id,
+                markdown_files=markdown_files,
+                pdf_file=None
+            )
+
+        except asyncio.TimeoutError:
+            logger.error("QA generation timed out")
+            raise HTTPException(status_code=504, detail="QA generation timed out")
+        except Exception as e:
+            logger.exception("Error in QA generation")
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            if _managed:
+                _managed.is_generating = False
+                _managed.update_last_activity()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error generating QA documents for session {session_id}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/qa-progress/{session_id}")
+async def get_qa_progress(session_id: str):
+    """Get the current progress of QA test scripts / code review generation."""
+    try:
+        doc_gen = await get_doc_generator()
+        progress = doc_gen.get_progress(session_id)
+
+        if progress is None:
+            return {
+                "session_id": session_id,
+                "status": "not_started",
+                "message": "QA generation has not started"
+            }
+
+        return {
+            "session_id": session_id,
+            "status": "in_progress" if progress["stage"] not in ("complete", "error", "test_scripts_complete") else progress["stage"],
+            **progress
+        }
+    except Exception as e:
+        logger.exception(f"Error getting QA progress for {session_id}")
+        raise HTTPException(status_code=500, detail=str(e))
 async def download_file(session_id: str, filename: str):
     """
     Download a generated documentation file (markdown)

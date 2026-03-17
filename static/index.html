@@ -1267,7 +1267,7 @@
             <!-- Step 4: Generate Documentation -->
             <div class="step" data-step="4">
                 <h2>Step 4: Generate Documentation</h2>
-                <p style="color: #666; margin: 20px 0;">Review your selection and generate documentation</p>
+                <p style="color: #666; margin: 20px 0;">Review your selection and choose what to generate</p>
                 
                 <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 20px; margin: 20px 0;">
                     <h3 style="margin-top: 0; color: #333; font-size: 1.1rem;">📋 Selected Components</h3>
@@ -1275,12 +1275,33 @@
                         <!-- Will be populated with selected components -->
                     </div>
                 </div>
+
+                <!-- Document Type Selector -->
+                <div style="background: #e8f4fd; border: 1px solid #bee5eb; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                    <h3 style="margin-top: 0; color: #0c5460; font-size: 1.1rem;">📑 Document Type</h3>
+                    <div style="display: flex; gap: 15px; margin-top: 12px; flex-wrap: wrap;">
+                        <label style="flex: 1; min-width: 200px; cursor: pointer;">
+                            <input type="radio" name="docType" value="technical" checked onchange="onDocTypeChange()" style="display: none;">
+                            <div id="docTypeCardTechnical" style="border: 2px solid #667eea; border-radius: 8px; padding: 15px; background: #f0f0ff; transition: all 0.2s;">
+                                <strong style="color: #333; font-size: 1rem;">📄 Technical Documentation</strong>
+                                <p style="color: #666; font-size: 0.85rem; margin: 8px 0 0 0;">Comprehensive technical docs: architecture, formulas, flows, data sources, usage instructions, and maintenance guide.</p>
+                            </div>
+                        </label>
+                        <label style="flex: 1; min-width: 200px; cursor: pointer;">
+                            <input type="radio" name="docType" value="qa" onchange="onDocTypeChange()" style="display: none;">
+                            <div id="docTypeCardQA" style="border: 2px solid #dee2e6; border-radius: 8px; padding: 15px; background: #fff; transition: all 0.2s;">
+                                <strong style="color: #333; font-size: 1rem;">🧪 QA Test Scripts & Code Review</strong>
+                                <p style="color: #666; font-size: 0.85rem; margin: 8px 0 0 0;">QA test scenarios (functional, edge cases, delegation, performance) + code review with weak points, enhancements, and priority matrix.</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
                 
                 <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 20px; margin: 20px 0;">
                     <h3 style="margin-top: 0; color: #856404; font-size: 1.1rem;">💡 Business Context <span style="font-weight: normal; font-size: 0.85rem;">(Optional)</span></h3>
-                    <p style="color: #856404; font-size: 0.9rem; margin: 10px 0;">Provide business context to help the AI generate more relevant documentation beyond pure technical details:</p>
+                    <p id="businessContextHint" style="color: #856404; font-size: 0.9rem; margin: 10px 0;">Provide business context to help the AI generate more relevant documentation beyond pure technical details:</p>
                     <textarea id="businessContext" placeholder="Example: This flow handles customer onboarding requests. It should process orders within 24 hours and notify the sales team. Used by Customer Service department daily." style="width: 100%; min-height: 120px; padding: 12px; border: 1px solid #ddd; border-radius: 5px; font-family: inherit; font-size: 0.95rem; resize: vertical;"></textarea>
-                    <small style="color: #856404; display: block; margin-top: 8px;">💡 Tip: Include business rules, user roles, processes, expected outcomes, or departmental context</small>
+                    <small id="businessContextTip" style="color: #856404; display: block; margin-top: 8px;">💡 Tip: Include business rules, user roles, processes, expected outcomes, or departmental context</small>
                 </div>
                 
                 <div class="status" id="generateStatus"></div>
@@ -1300,7 +1321,7 @@
                 </div>
 
                 <div style="text-align: center; margin: 40px 0;">
-                    <button class="btn btn-success" id="generateBtn" onclick="generateDocumentation()" style="font-size: 1.2rem; padding: 15px 50px;">
+                    <button class="btn btn-success" id="generateBtn" onclick="handleGenerate()" style="font-size: 1.2rem; padding: 15px 50px;">
                         📄 Generate Documentation
                     </button>
                 </div>
@@ -1314,19 +1335,14 @@
             <!-- Step 5: Edit & Download -->
             <div class="step" data-step="5">
                 <h2>Step 5: Download Documentation</h2>
-                <p style="color: #666; margin: 20px 0;">Your documentation has been generated successfully!</p>
+                <p style="color: #666; margin: 20px 0;">Your documents have been generated successfully!</p>
                 
-                <div class="status success">
+                <div class="status success" id="downloadSuccessMsg">
                     ✓ Documentation generated successfully!
                 </div>
 
-                <div style="text-align: center; margin: 40px 0;">
-                    <button class="btn btn-success" onclick="downloadZip()" style="font-size: 1.2rem; padding: 15px 40px; margin: 10px;">
-                        📦 Download ZIP (Markdown + Images)
-                    </button>
-                    <button class="btn btn-primary" onclick="downloadDocx()" style="font-size: 1.2rem; padding: 15px 40px; margin: 10px; background-color: #0d6efd; border-color: #0d6efd;">
-                        📄 Download Word
-                    </button>
+                <div id="downloadFilesContainer" style="text-align: center; margin: 40px 0;">
+                    <!-- Will be populated dynamically based on generated files -->
                 </div>
 
                 <div class="button-group">
@@ -1397,6 +1413,7 @@
         let unpackingComplete = false;
         let pendingScreenshots = []; // {file, context, componentPath}
         let appScreens = []; // [{path, display_name, type, app_path}] — populated after unpack
+        let selectedDocType = 'technical'; // 'technical' or 'qa'
 
         // Clean up session on page close/refresh.
         // navigator.sendBeacon (POST) is the most reliable on unload; fetch+keepalive is the fallback.
@@ -1760,6 +1777,77 @@
             } else {
                 document.getElementById('chatToggle').classList.remove('show');
             }
+
+            // Populate Step 5 download buttons dynamically
+            if (step === 5 && generatedFiles.length > 0) {
+                populateDownloadButtons();
+            }
+        }
+
+        function populateDownloadButtons() {
+            const container = document.getElementById('downloadFilesContainer');
+            const successMsg = document.getElementById('downloadSuccessMsg');
+            container.innerHTML = '';
+
+            if (selectedDocType === 'qa' && generatedFiles.length > 1) {
+                successMsg.textContent = '✓ QA Test Scripts & Code Review generated successfully!';
+                // Show separate download sections for each file
+                generatedFiles.forEach((filename, index) => {
+                    const isTestScripts = filename.includes('TestScripts');
+                    const label = isTestScripts ? '🧪 Test Scripts' : '📋 Code Review';
+                    const shortName = filename.replace('.md', '');
+
+                    const section = document.createElement('div');
+                    section.style.cssText = 'background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px 20px; margin: 10px 0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;';
+                    section.innerHTML = `
+                        <span style="font-weight: 600; font-size: 1rem; color: #333;">${label}</span>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button class="btn btn-success" onclick="downloadZipForFile('${filename}')" style="padding: 8px 20px;">
+                                📦 ZIP
+                            </button>
+                            <button class="btn btn-primary" onclick="downloadDocxForFile(this, '${filename}')" style="padding: 8px 20px; background-color: #0d6efd; border-color: #0d6efd;">
+                                📄 Word
+                            </button>
+                        </div>
+                    `;
+                    container.appendChild(section);
+                });
+            } else {
+                successMsg.textContent = '✓ Documentation generated successfully!';
+                container.innerHTML = `
+                    <button class="btn btn-success" onclick="downloadZip()" style="font-size: 1.2rem; padding: 15px 40px; margin: 10px;">
+                        📦 Download ZIP (Markdown + Images)
+                    </button>
+                    <button class="btn btn-primary" onclick="downloadDocx()" style="font-size: 1.2rem; padding: 15px 40px; margin: 10px; background-color: #0d6efd; border-color: #0d6efd;">
+                        📄 Download Word
+                    </button>
+                `;
+            }
+        }
+
+        function downloadZipForFile(filename) {
+            const a = document.createElement('a');
+            a.href = `/download-zip/${sessionId}/${filename}`;
+            a.download = filename.replace('.md', '') + '.zip';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        function downloadDocxForFile(btn, filename) {
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '⏳ Generating...';
+            btn.disabled = true;
+            const a = document.createElement('a');
+            a.href = `/download-docx/${sessionId}/${filename}`;
+            a.download = filename.replace('.md', '.docx');
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }, 3000);
         }
 
         // Step 1: Upload
@@ -2397,6 +2485,45 @@
             }
         }
 
+        // Document type selector
+        function onDocTypeChange() {
+            const radios = document.querySelectorAll('input[name="docType"]');
+            radios.forEach(r => {
+                if (r.checked) selectedDocType = r.value;
+            });
+            const techCard = document.getElementById('docTypeCardTechnical');
+            const qaCard = document.getElementById('docTypeCardQA');
+            const generateBtn = document.getElementById('generateBtn');
+            const hint = document.getElementById('businessContextHint');
+            const tip = document.getElementById('businessContextTip');
+
+            if (selectedDocType === 'qa') {
+                qaCard.style.border = '2px solid #28a745';
+                qaCard.style.background = '#f0fff0';
+                techCard.style.border = '2px solid #dee2e6';
+                techCard.style.background = '#fff';
+                generateBtn.innerHTML = '🧪 Generate QA Test Scripts & Code Review';
+                hint.textContent = 'Provide business context to help the AI generate more relevant test scenarios and identify weak points:';
+                tip.textContent = '💡 Tip: Include expected behaviors, known issues, compliance requirements, user roles, and business rules to test against';
+            } else {
+                techCard.style.border = '2px solid #667eea';
+                techCard.style.background = '#f0f0ff';
+                qaCard.style.border = '2px solid #dee2e6';
+                qaCard.style.background = '#fff';
+                generateBtn.innerHTML = '📄 Generate Documentation';
+                hint.textContent = 'Provide business context to help the AI generate more relevant documentation beyond pure technical details:';
+                tip.textContent = '💡 Tip: Include business rules, user roles, processes, expected outcomes, or departmental context';
+            }
+        }
+
+        function handleGenerate() {
+            if (selectedDocType === 'qa') {
+                generateQATestScripts();
+            } else {
+                generateDocumentation();
+            }
+        }
+
         // Step 4: Generate Documentation
         async function generateDocumentation() {
             const generateBtn = document.getElementById('generateBtn');
@@ -2480,6 +2607,104 @@
                     docProgressInterval = null;
                 }
                 
+                isGenerating = false;
+                generateSpinner.classList.remove('show');
+                generateProgress.style.display = 'none';
+                showStatus(generateStatus, 'error', 'Error: ' + error.message);
+                generateBtn.disabled = false;
+                generateBtn.style.opacity = '1';
+                generateBtn.style.cursor = 'pointer';
+            }
+        }
+
+        // QA Test Scripts Generation
+        async function generateQATestScripts() {
+            const generateBtn = document.getElementById('generateBtn');
+            const generateStatus = document.getElementById('generateStatus');
+            const generateSpinner = document.getElementById('generateSpinner');
+            const generateProgress = document.getElementById('generateProgressPanel');
+            const businessContext = document.getElementById('businessContext').value.trim();
+
+            if (generateBtn.disabled || isGenerating) {
+                if (isGenerating) {
+                    showStatus(generateStatus, 'warning', '⚠️ Generation is already in progress.');
+                } else {
+                    showStatus(generateStatus, 'warning', '⚠️ Please wait for unpacking to complete.');
+                }
+                return;
+            }
+
+            isGenerating = true;
+            generateBtn.disabled = true;
+            generateBtn.style.opacity = '0.6';
+            generateBtn.style.cursor = 'not-allowed';
+            generateSpinner.classList.add('show');
+            generateProgress.style.display = 'block';
+            document.getElementById('generateProgressMessage').textContent = 'Starting QA test scripts & code review generation... This may take up to 20 minutes.';
+            document.getElementById('generateProgressPercent').textContent = '0%';
+            document.getElementById('generateProgressBar').style.width = '0%';
+            generateStatus.style.display = 'none';
+            document.getElementById('generateProgressLog').innerHTML = '';
+
+            // Poll QA progress endpoint
+            const qaProgressInterval = setInterval(async () => {
+                try {
+                    const resp = await fetch(`/qa-progress/${sessionId}`);
+                    if (resp.ok) {
+                        const progress = await resp.json();
+                        if (progress.percentage !== undefined) {
+                            document.getElementById('generateProgressPercent').textContent = progress.percentage + '%';
+                            document.getElementById('generateProgressBar').style.width = progress.percentage + '%';
+                        }
+                        if (progress.message) {
+                            document.getElementById('generateProgressMessage').textContent = progress.message;
+                            if (progress.message.startsWith('✓')) {
+                                const logEl = document.getElementById('generateProgressLog');
+                                const diffText = progress.diff
+                                    ? ` <span style="color:#28a745">+${progress.diff.added}</span> <span style="color:#dc3545">-${progress.diff.removed}</span> <span style="color:#6c757d">~${progress.diff.changed}</span>`
+                                    : '';
+                                logEl.innerHTML += `<div>${progress.message}${diffText}</div>`;
+                                logEl.scrollTop = logEl.scrollHeight;
+                            }
+                        }
+                        if (progress.stage === 'complete' || progress.stage === 'error') {
+                            clearInterval(qaProgressInterval);
+                        }
+                    }
+                } catch (e) { /* ignore polling errors */ }
+            }, 2000);
+
+            try {
+                const requestBody = {};
+                if (businessContext) {
+                    requestBody.business_context = businessContext;
+                }
+
+                const response = await fetch(`/generate-qa/${sessionId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+
+                const data = await response.json();
+                clearInterval(qaProgressInterval);
+                generateSpinner.classList.remove('show');
+                generateProgress.style.display = 'none';
+
+                if (response.ok) {
+                    generatedFiles = data.markdown_files;
+                    isGenerating = false;
+                    showStatus(generateStatus, 'success', 'QA Test Scripts & Code Review generated successfully!');
+                    setTimeout(() => goToStep(5), 1500);
+                } else {
+                    isGenerating = false;
+                    showStatus(generateStatus, 'error', data.detail || 'QA generation failed');
+                    generateBtn.disabled = false;
+                    generateBtn.style.opacity = '1';
+                    generateBtn.style.cursor = 'pointer';
+                }
+            } catch (error) {
+                clearInterval(qaProgressInterval);
                 isGenerating = false;
                 generateSpinner.classList.remove('show');
                 generateProgress.style.display = 'none';
@@ -2620,6 +2845,11 @@
                     docProgressInterval = null;
                 }
 
+                // Reset doc type selector
+                selectedDocType = 'technical';
+                const techRadio = document.querySelector('input[name="docType"][value="technical"]');
+                if (techRadio) { techRadio.checked = true; onDocTypeChange(); }
+
                 // Reset screenshot UI
                 document.getElementById('screenshotPreviews').innerHTML = '';
                 document.getElementById('screenshotSummary').textContent = '';
@@ -2645,8 +2875,7 @@
                 generateBtn.style.cursor = '';
                 document.getElementById('generateStatus').style.display = 'none';
                 document.getElementById('generateSpinner').classList.remove('show');
-                document.getElementById('generateProgress').classList.remove('show');
-                document.getElementById('generateProgress').textContent = '';
+                document.getElementById('generateProgressPanel').style.display = 'none';
                 document.getElementById('businessContext').value = '';
 
                 // Close WebSocket
