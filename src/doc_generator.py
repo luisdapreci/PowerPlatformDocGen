@@ -2718,6 +2718,519 @@ Output the section now:"""
         
         return documentation
     
+    async def generate_user_guide(
+        self,
+        session_id: str,
+        working_directory: Path,
+        source_markdown: str,
+        template_path: Path,
+        images_dir: Optional[Path] = None,
+        business_context: str = "",
+    ) -> str:
+        """
+        Generate a user guide by transforming technical documentation into
+        end-user-friendly content using the UserGuideTemplate.
+
+        Approach: duplicate the template and edit it in-place via Copilot,
+        preserving the template's structure, section ordering, and formatting.
+
+        Args:
+            session_id: Session identifier for progress tracking
+            working_directory: Path where the user guide file will be created
+            source_markdown: Full text of the source technical documentation
+            template_path: Path to UserGuideTemplate.md
+            images_dir: Path to images directory (copied alongside the guide)
+            business_context: Optional user-provided business context
+
+        Returns:
+            Generated user guide markdown content
+        """
+        if not self.client:
+            raise RuntimeError("DocumentationGenerator not initialized")
+
+        # Define user guide sections for per-section refinement passes
+        ug_sections = [
+            ("header_welcome", "App Header & Welcome Description"),
+            ("glossary", "Glossary"),
+            ("capabilities", "What You Can Do & Getting Started"),
+            ("capability_sections", "Per-Capability Detailed Sections"),
+            ("tips_faq", "Tips for Success & Common Questions"),
+            ("support_limits", "Getting Help, Known Limitations & Quick Reference"),
+            ("version_info", "Version Information & Final Cleanup"),
+        ]
+
+        # Pass 1 (bulk population) + per-section passes
+        total_steps = 1 + len(ug_sections)
+
+        try:
+            self._update_progress(
+                session_id, "initializing", 0, total_steps,
+                "Preparing user guide template"
+            )
+
+            # 1. Copy template to working directory
+            import shutil
+            doc_file = working_directory / f"{session_id}_UserGuide.md"
+            shutil.copy(template_path, doc_file)
+            logger.info(f"Created user guide template copy: {doc_file}")
+
+            # 2. Copy images directory into working directory so Copilot and
+            #    output both have access to the images
+            if images_dir and images_dir.exists():
+                dest_images = working_directory / "images"
+                if not dest_images.exists():
+                    shutil.copytree(images_dir, dest_images)
+                    logger.info(f"Copied {sum(1 for _ in dest_images.iterdir())} images to {dest_images}")
+
+            # 3. Create isolated Copilot session
+            session_config = {
+                "model": config.COPILOT_MODEL,
+                "working_directory": str(working_directory),
+                "streaming": False,
+                "on_permission_request": lambda req, ctx: (
+                    PermissionRequestResult(kind="denied-by-rules")
+                    if req.kind.value == "shell"
+                    else PermissionRequestResult(kind="approved")
+                ),
+                "system_message": {
+                    "mode": "append",
+                    "content": self._build_user_guide_system_prompt(
+                        str(doc_file), source_markdown
+                    )
+                }
+            }
+
+            temp_session = await self.client.create_session(session_config)
+            logger.info(f"Created user guide editing session for {session_id}")
+
+            business_section = ""
+            if business_context:
+                business_section = f"\n\n**USER BUSINESS CONTEXT:**\n{business_context}\n"
+
+            current_step = 0
+
+            # ── PASS 1: Bulk population ──────────────────────────
+            current_step += 1
+            self._update_progress(
+                session_id, "transforming", current_step, total_steps,
+                "Transforming technical docs into user guide (bulk pass)"
+            )
+
+            _before_lines = doc_file.read_text(encoding="utf-8").splitlines()
+
+            bulk_prompt = self._build_user_guide_bulk_prompt(
+                doc_file_path=str(doc_file),
+                source_markdown=source_markdown,
+                business_section=business_section,
+                images_dir=str(working_directory / "images") if images_dir else None,
+            )
+
+            await temp_session.send_and_wait(
+                {"prompt": bulk_prompt},
+                timeout=config.DOC_GEN_SECTION_TIMEOUT * 2  # longer for bulk
+            )
+
+            _after_lines = doc_file.read_text(encoding="utf-8").splitlines()
+            _added = max(0, len(_after_lines) - len(_before_lines))
+            _changed = sum(1 for a, b in zip(_before_lines, _after_lines) if a != b)
+            logger.info(f"✓ Bulk pass complete: +{_added} lines, {_changed} lines changed")
+            self._update_progress(
+                session_id, "transforming", current_step, total_steps,
+                "✓ Bulk population complete",
+                diff={"added": _added, "removed": 0, "changed": _changed}
+            )
+
+            # ── PASS 2: Per-section refinement ───────────────────
+            for sec_idx, (section_id, section_name) in enumerate(ug_sections, 1):
+                try:
+                    current_step += 1
+                    self._update_progress(
+                        session_id, "refining", current_step, total_steps,
+                        f"Refining: {section_name}"
+                    )
+
+                    logger.info(f"Section pass {sec_idx}/{len(ug_sections)}: {section_name}...")
+                    _before_lines = doc_file.read_text(encoding="utf-8").splitlines()
+
+                    section_prompt = self._build_user_guide_section_prompt(
+                        section_id=section_id,
+                        section_name=section_name,
+                        doc_file_path=str(doc_file),
+                        source_markdown=source_markdown,
+                        business_section=business_section,
+                        images_dir=str(working_directory / "images") if images_dir else None,
+                    )
+
+                    await temp_session.send_and_wait(
+                        {"prompt": section_prompt},
+                        timeout=config.DOC_GEN_SECTION_TIMEOUT
+                    )
+
+                    _after_lines = doc_file.read_text(encoding="utf-8").splitlines()
+                    _added = max(0, len(_after_lines) - len(_before_lines))
+                    _removed = max(0, len(_before_lines) - len(_after_lines))
+                    _changed = sum(1 for a, b in zip(_before_lines, _after_lines) if a != b)
+                    logger.info(
+                        f"✓ Section '{section_id}' complete: +{_added} -{_removed} lines, {_changed} changed"
+                    )
+                    self._update_progress(
+                        session_id, "refining", current_step, total_steps,
+                        f"✓ {section_name}",
+                        diff={"added": _added, "removed": _removed, "changed": _changed}
+                    )
+
+                except asyncio.TimeoutError:
+                    logger.error(f"Timeout refining section '{section_id}', continuing...")
+                except Exception as e:
+                    logger.error(f"Error refining section '{section_id}': {e}")
+
+            # ── Post-processing ──────────────────────────────────
+            documentation = doc_file.read_text(encoding="utf-8")
+
+            # Fix any absolute image paths → relative images/ paths
+            documentation = self._fix_user_guide_image_paths(
+                documentation, working_directory
+            )
+            doc_file.write_text(documentation, encoding="utf-8")
+
+            logger.info(f"✓ User guide ready: {len(documentation)} chars")
+
+            # Clean up session
+            try:
+                if hasattr(temp_session, "close"):
+                    await temp_session.close()
+                logger.info("User guide editing session closed")
+            except Exception as e:
+                logger.warning(f"Error closing session: {e}")
+
+            self._update_progress(
+                session_id, "complete", total_steps, total_steps,
+                "User guide generation complete"
+            )
+            return documentation
+
+        except Exception as e:
+            logger.exception(f"Error generating user guide for {session_id}")
+            self._update_progress(
+                session_id, "error", 0, total_steps,
+                f"Error: {str(e)}"
+            )
+            raise
+
+    # ── User Guide prompt builders ────────────────────────────────
+
+    def _build_user_guide_system_prompt(
+        self, doc_file_path: str, source_markdown: str
+    ) -> str:
+        """System prompt for user guide transformation sessions."""
+
+        # Truncate source to avoid exceeding context limits while keeping as much as possible
+        max_source_chars = 80000
+        truncated = source_markdown[:max_source_chars]
+        if len(source_markdown) > max_source_chars:
+            truncated += "\n\n... [source documentation truncated] ..."
+
+        return f"""[!] CRITICAL: This is a FILE EDITING task, not a conversation.
+
+YOU MUST USE TOOLS TO EDIT THE FILE. DO NOT WRITE TEXT RESPONSES.
+
+**USER GUIDE FILE:** `{doc_file_path}`
+
+**YOUR ROLE:** Expert technical writer transforming Power Platform technical
+documentation into an end-user guide.
+
+**AUDIENCE:** Non-technical business users who use the app daily.
+They do NOT care about formulas, Dataverse schemas, or deployment details.
+They care about: what the app does, how to use it step-by-step, what to do when
+something goes wrong, and where to get help.
+
+**WRITING STYLE:**
+- Simple, friendly, direct language — no jargon
+- Second person ("you") and active voice
+- Short sentences and paragraphs
+- Step-by-step numbered instructions for tasks
+- "How to…" framing for capability sections
+- Include tips, warnings, and notes where helpful
+
+**IMAGE HANDLING — CRITICAL:**
+The source technical documentation references images in `images/` directory.
+You MUST preserve and re-embed ALL relevant image references from the source
+docs into the user guide. Use relative paths: `![caption](images/filename.ext)`
+Screenshots help users see exactly what to expect — a user guide without
+screenshots is incomplete.
+
+When embedding images:
+- Place each screenshot RIGHT AFTER the step or description it illustrates
+- Write a brief, user-friendly caption
+- Use the EXACT filenames from the source documentation
+
+**PROHIBITED ACTIONS:**
+[X] DO NOT write conversational responses
+[X] DO NOT invent features not mentioned in the source documentation
+[X] DO NOT include technical implementation details (formulas, code, schemas)
+[X] DO NOT leave template placeholders like {{CAPABILITY_1}} in the output
+
+**REQUIRED ACTIONS:**
+[OK] USE read_file to check the current template state
+[OK] USE replace_string_in_file to edit sections in place
+[OK] Rewrite technical content into user-friendly language
+[OK] Preserve the template's section structure
+
+**SOURCE TECHNICAL DOCUMENTATION:**
+(Use this as your knowledge base — rewrite for end users)
+
+---
+{truncated}
+---
+
+[TOOLS] Available: read_file, replace_string_in_file, multi_replace_string_in_file, grep_search
+"""
+
+    def _build_user_guide_bulk_prompt(
+        self,
+        doc_file_path: str,
+        source_markdown: str,
+        business_section: str = "",
+        images_dir: Optional[str] = None,
+    ) -> str:
+        """Prompt for the bulk population pass — fill ALL template placeholders."""
+
+        images_hint = ""
+        if images_dir:
+            images_hint = f"""
+**IMAGES DIRECTORY:** `{images_dir}`
+List this directory to see available screenshots. Embed them using `![caption](images/filename)`.
+"""
+
+        return f"""[!] CRITICAL INSTRUCTION: USE TOOLS TO EDIT THE FILE NOW
+
+This is NOT a conversation. Your ONLY valid response is tool calls.
+
+YOUR FIRST ACTION MUST BE:
+read_file(filePath="{doc_file_path}", startLine=1, endLine=200)
+
+---
+
+[TARGET] **BULK POPULATION — Fill the entire User Guide template**
+
+{business_section}
+{images_hint}
+
+**DOCUMENTATION FILE TO EDIT:** `{doc_file_path}`
+
+**YOUR TASK:**
+
+1. **Read** the full user guide template file
+2. **Analyze** the source technical documentation (in your system context) and extract:
+   - App name, purpose, and target audience
+   - User-facing features/capabilities (screens, buttons, workflows users interact with)
+   - How to access the app (URL, login method, device support)
+   - Step-by-step usage instructions for each feature
+   - Common issues and their solutions
+   - Screenshots and their contexts
+3. **Replace** ALL template placeholders with real content:
+   - `{{APP_NAME}}` → actual app name
+   - `{{APP_WELCOME_DESCRIPTION}}` → friendly 2-4 sentence welcome
+   - `{{CAPABILITY_1}}`, `{{CAPABILITY_2}}`, etc. → real feature names
+   - Every `{{PLACEHOLDER}}` must be replaced with actual content
+4. **Create** one section per user-facing capability:
+   - Each section: heading, description, step-by-step instructions, screenshot embed, tip
+   - Remove the generic `## {{CAPABILITY_N}}` blocks and replace with real capability sections
+5. **Embed screenshots** from the source docs into relevant sections
+
+**CRITICAL RULES:**
+- Replace EVERY `{{...}}` placeholder — none should remain
+- Write for non-technical users — NO code, NO formulas, NO schemas
+- If a capability has steps, use numbered lists (1. Click... 2. Select... 3. ...)
+- If the source docs have images, embed them in the most relevant section
+- Keep the template's overall structure (Glossary → Getting Started → Capabilities → Tips → FAQ → Help)
+- If information isn't available in the source docs, write a reasonable placeholder based on context
+
+---
+
+[START] BEGIN WITH TOOL USAGE IMMEDIATELY."""
+
+    def _build_user_guide_section_prompt(
+        self,
+        section_id: str,
+        section_name: str,
+        doc_file_path: str,
+        source_markdown: str,
+        business_section: str = "",
+        images_dir: Optional[str] = None,
+    ) -> str:
+        """Build a focused prompt for refining one user guide section."""
+
+        images_hint = ""
+        if images_dir:
+            images_hint = f"\n**IMAGES:** List `{images_dir}` for available screenshots. Embed as `![caption](images/filename)`.\n"
+
+        section_instructions = {
+            "header_welcome": f"""[TARGET] **App Header & Welcome Description**
+
+Edit the TOP of `{doc_file_path}`:
+
+1. Ensure `# {{APP_NAME}}` is replaced with the actual app name
+2. Write a warm, clear 2-4 sentence welcome: what the app does, who it's for, what problem it solves
+3. Add an appropriate `> **Note:**` if the app has important scope boundaries
+4. Remove any remaining template instruction comments (lines starting with `> *`)
+
+Only edit the header and welcome sections — do NOT touch other sections.""",
+
+            "glossary": f"""[TARGET] **Glossary**
+
+Edit the Glossary section of `{doc_file_path}`:
+
+1. Extract business terms and acronyms from the source technical documentation
+2. Define each in plain language (not technical definitions)
+3. Remove template placeholder rows (`{{TERM_1}}`, etc.)
+4. If no special terms exist, replace the section content with: "*No special terminology is needed to use this app.*"
+5. Remove template instruction comments
+
+Only edit the Glossary section.""",
+
+            "capabilities": f"""[TARGET] **What You Can Do & Getting Started**
+
+Edit `{doc_file_path}` — the "What You Can Do" and "Getting Started" sections:
+
+1. **What You Can Do:** Create a bullet list of user-facing capabilities derived from
+   the technical docs' features/screens/flows. Write them as user actions:
+   "View and filter records", "Export data to Excel", "Create new entries", etc.
+2. **Getting Started:** Fill in:
+   - How to open the app (URL, navigation path, or launch method)
+   - Sign-in requirements
+   - Supported devices
+   - First-time setup or landing screen description
+3. Embed a screenshot of the home/landing screen if available
+4. Remove all `{{...}}` placeholders and template comments
+
+Only edit these two sections.""",
+
+            "capability_sections": f"""[TARGET] **Per-Capability Detailed Sections**
+
+Edit `{doc_file_path}` — the individual capability sections:
+
+1. For each capability listed in "What You Can Do", ensure there is a dedicated `## ` section
+2. Each section must include:
+   - A brief description of what the user can do and when they'd use it
+   - **Step-by-step numbered instructions** (1. Click... 2. Select... 3. ...)
+   - A screenshot embed if available: `![caption](images/filename)`
+   - A practical tip if relevant
+3. Remove template placeholders (`{{CAPABILITY_1_DESCRIPTION}}`, etc.)
+4. Remove any generic `## {{CAPABILITY_N}}` blocks that weren't populated
+5. If the source docs mention additional features not yet covered, add new sections for them
+{images_hint}
+Only edit the capability sections (between "Getting Started" and "Tips for Success").""",
+
+            "tips_faq": f"""[TARGET] **Tips for Success & Common Questions**
+
+Edit `{doc_file_path}` — Tips and FAQ sections:
+
+1. **Tips for Success:**
+   - Group practical advice by theme (e.g., "Data Entry", "Navigation", "Troubleshooting")
+   - 2-4 bullets per theme
+   - Derive from technical docs' best practices, error handling, and usage patterns
+   - Remove `{{TIPS_THEME_1}}` and similar placeholders
+2. **Common Questions:**
+   - Write 3-6 Q&A pairs addressing the most likely user confusion points
+   - Derive from technical docs' troubleshooting, known issues, and FAQs
+   - Format: `**Q:** question` / `A: answer`
+   - Remove `{{QUESTION_1}}` and similar placeholders
+
+Only edit Tips for Success and Common Questions sections.""",
+
+            "support_limits": f"""[TARGET] **Getting Help, Known Limitations & Quick Reference**
+
+Edit `{doc_file_path}` — support, limitations, and quick reference sections:
+
+1. **Getting Help:** Fill in the escalation path (3 steps).
+   If source docs mention support contacts, use them. Otherwise write reasonable defaults.
+2. **Known Limitations:** List any confirmed bugs, edge cases, or missing capabilities
+   found in the source docs, with workarounds. If none, write:
+   "*No known limitations at this time.*"
+3. **Quick Reference:** Build the "I want to..." table:
+   - One row per common task (open app, filter, export, create record, etc.)
+   - "How to do it" column: brief instruction
+   - Derive from the capability sections already written
+4. Remove all `{{...}}` placeholders
+
+Only edit these three sections.""",
+
+            "version_info": f"""[TARGET] **Version Information & Final Cleanup**
+
+Edit `{doc_file_path}` — final section and whole-document cleanup:
+
+1. **Version Information:** Fill in App name, Document Version ("1.0"), Last Updated date
+2. **Final Cleanup — scan the ENTIRE document:**
+   - Remove ALL remaining `{{...}}` placeholders — replace with real content or remove the line
+   - Remove ALL template instruction comments (lines like `> *Define terms...`)
+   - Ensure no duplicate sections
+   - Ensure consistent heading levels (# for title, ## for main sections, ### for sub)
+   - Verify all image references use `images/filename` relative paths
+   - Check that the document reads naturally from top to bottom
+
+Read the full file and fix any remaining issues.""",
+        }
+
+        instruction = section_instructions.get(
+            section_id,
+            f"Complete the {section_name} section of the user guide."
+        )
+
+        return f"""[!] CRITICAL: SECTION EDITING TASK — USE TOOLS ONLY
+
+DO NOT write text. USE read_file and replace_string_in_file to edit `{doc_file_path}`.
+
+---
+
+{business_section}
+
+**USER GUIDE FILE:** `{doc_file_path}`
+
+---
+
+{instruction}
+
+---
+
+[EDIT] **GUIDELINES:**
+
+[OK] Read the file first with read_file
+[OK] Use replace_string_in_file for precise edits — include 3-5 lines of context
+[OK] Preserve content from other sections
+[OK] Write for non-technical end users
+
+[STOP] Don't write conversational text — only use tools
+[STOP] Don't edit sections outside your assigned scope
+[STOP] Don't include code, formulas, or technical implementation details
+[STOP] Don't leave any {{...}} placeholders in the sections you edit
+
+BEGIN WITH TOOL USAGE IMMEDIATELY."""
+
+    @staticmethod
+    def _fix_user_guide_image_paths(
+        markdown: str, working_directory: Path
+    ) -> str:
+        """Normalize image paths in the user guide to relative images/ paths."""
+        import re as _re
+
+        # Remove _optimized suffixes
+        markdown = _re.sub(
+            r'_optimized(?=\.(png|jpe?g|gif|webp))',
+            '', markdown, flags=_re.IGNORECASE
+        )
+
+        # Replace any absolute paths containing the working directory with relative
+        wd_str = str(working_directory).replace('\\', '/')
+        markdown = markdown.replace(wd_str + '/images/', 'images/')
+        markdown = markdown.replace(wd_str + '\\images\\', 'images/')
+
+        # Also handle Windows-style absolute paths
+        wd_win = str(working_directory).replace('/', '\\')
+        markdown = markdown.replace(wd_win + '\\images\\', 'images/')
+
+        return markdown
+
     
 # Global singleton instance
 _doc_generator: Optional[DocumentationGenerator] = None

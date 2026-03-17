@@ -892,6 +892,19 @@
             line-height: 1.5;
         }
 
+        /* User Guide Generator Styles */
+        .user-guide-generator {
+            display: none;
+        }
+
+        .user-guide-generator.active {
+            display: block;
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
         /* Markdown Converter Styles */
         .markdown-converter {
             display: none;
@@ -1050,6 +1063,73 @@
                     <div class="mode-icon">📄</div>
                     <div class="mode-title">Convert to Word Document</div>
                     <div class="mode-description">Upload a markdown file or a zip (markdown + images) and convert to a Word document (.docx)</div>
+                </div>
+                <div class="mode-btn" onclick="selectMode('userguide')">
+                    <div class="mode-icon">📘</div>
+                    <div class="mode-title">Generate User Guide</div>
+                    <div class="mode-description">Upload technical documentation (ZIP with markdown + images) and transform it into an end-user guide</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- User Guide Generator -->
+        <div class="user-guide-generator" id="userGuideGenerator">
+            <button class="back-to-modes" onclick="backToModes()">← Back to Mode Selection</button>
+
+            <h2>Generate User Guide</h2>
+            <p style="color: #666; margin: 20px 0;">Upload technical documentation (ZIP with markdown + images, or plain .md) to generate an end-user guide</p>
+
+            <div class="converter-upload-area" id="ugUploadArea">
+                <div class="converter-icon">📘</div>
+                <div class="converter-text">Drag & Drop your technical documentation here</div>
+                <div class="converter-hint">or click to browse &mdash; .zip with markdown + images (max 50 MB) or .md (max 10 MB)</div>
+                <input type="file" id="ugFileInput" accept=".md,.zip" style="display: none;">
+            </div>
+
+            <div class="converter-file-info" id="ugFileInfo">
+                <div class="file-info-item">
+                    <span class="file-info-label">File Name:</span>
+                    <span class="file-info-value" id="ugFileName">-</span>
+                </div>
+                <div class="file-info-item">
+                    <span class="file-info-label">File Size:</span>
+                    <span class="file-info-value" id="ugFileSize">-</span>
+                </div>
+            </div>
+
+            <div style="margin: 20px 0;">
+                <label style="font-weight: bold; color: #333; display: block; margin-bottom: 8px;">Business Context (optional)</label>
+                <textarea id="ugBusinessContext" rows="3" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 0.95rem; resize: vertical; font-family: inherit;" placeholder="Describe target audience, business processes, or user roles to help tailor the guide..."></textarea>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <button class="convert-btn" id="ugGenerateBtn" onclick="generateUserGuide()">
+                    📘 Generate User Guide
+                </button>
+            </div>
+
+            <div class="status" id="ugStatus"></div>
+            <div class="loading-spinner" id="ugSpinner"></div>
+
+            <div id="ugProgress" style="display: none; margin: 20px 0;">
+                <div style="background: #e0e7ff; border-radius: 8px; padding: 20px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                        <span id="ugProgressMessage" style="font-weight: 500; color: #333;">Starting...</span>
+                        <span id="ugProgressPercent" style="font-weight: bold; color: #667eea;">0%</span>
+                    </div>
+                    <div style="background: #c5d0ff; border-radius: 4px; height: 8px; overflow: hidden;">
+                        <div id="ugProgressBar" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); height: 100%; width: 0%; transition: width 0.5s ease; border-radius: 4px;"></div>
+                    </div>
+                    <div id="ugProgressLog" style="margin-top: 12px; font-size: 0.85rem; color: #555; max-height: 150px; overflow-y: auto;"></div>
+                </div>
+            </div>
+
+            <div id="ugDownloadSection" style="display: none; text-align: center; margin: 30px 0;">
+                <h3 style="color: #333; margin-bottom: 15px;">✅ User Guide Generated!</h3>
+                <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+                    <button class="convert-btn show" onclick="downloadUserGuide('zip')" style="display: inline-block;">📦 Download ZIP</button>
+                    <button class="convert-btn show" onclick="downloadUserGuide('docx')" style="display: inline-block;">📝 Download Word</button>
+                    <button class="convert-btn show" onclick="downloadUserGuide('md')" style="display: inline-block;">📄 Download Markdown</button>
                 </div>
             </div>
         </div>
@@ -1305,6 +1385,9 @@
         let selectedComponents = [];
         let generatedFiles = [];
         let converterFile = null;
+        let ugFile = null;
+        let ugSessionId = null;
+        let ugOutputFilename = null;
         let unpackingComplete = false;
         let pendingScreenshots = []; // {file, context, componentPath}
         let appScreens = []; // [{path, display_name, type, app_path}] — populated after unpack
@@ -1327,15 +1410,19 @@
             const modeSelector = document.getElementById('modeSelector');
             const solutionWizard = document.getElementById('solutionWizard');
             const markdownConverter = document.getElementById('markdownConverter');
+            const userGuideGenerator = document.getElementById('userGuideGenerator');
 
             modeSelector.style.display = 'none';
+            solutionWizard.classList.remove('active');
+            markdownConverter.classList.remove('active');
+            userGuideGenerator.classList.remove('active');
 
             if (mode === 'solution') {
                 solutionWizard.classList.add('active');
-                markdownConverter.classList.remove('active');
             } else if (mode === 'markdown') {
                 markdownConverter.classList.add('active');
-                solutionWizard.classList.remove('active');
+            } else if (mode === 'userguide') {
+                userGuideGenerator.classList.add('active');
             }
         }
 
@@ -1343,6 +1430,7 @@
             const modeSelector = document.getElementById('modeSelector');
             const solutionWizard = document.getElementById('solutionWizard');
             const markdownConverter = document.getElementById('markdownConverter');
+            const userGuideGenerator = document.getElementById('userGuideGenerator');
 
             // Reset converter state
             converterFile = null;
@@ -1351,10 +1439,23 @@
             document.getElementById('converterStatus').className = 'status';
             document.getElementById('converterStatus').textContent = '';
 
+            // Reset user guide state
+            ugFile = null;
+            ugSessionId = null;
+            ugOutputFilename = null;
+            document.getElementById('ugFileInfo').classList.remove('show');
+            document.getElementById('ugGenerateBtn').classList.remove('show');
+            document.getElementById('ugStatus').className = 'status';
+            document.getElementById('ugStatus').textContent = '';
+            document.getElementById('ugProgress').style.display = 'none';
+            document.getElementById('ugDownloadSection').style.display = 'none';
+            document.getElementById('ugBusinessContext').value = '';
+
             // Show mode selector
             modeSelector.style.display = 'block';
             solutionWizard.classList.remove('active');
             markdownConverter.classList.remove('active');
+            userGuideGenerator.classList.remove('active');
         }
 
         // Markdown to Word Converter
@@ -1476,6 +1577,156 @@
             if (bytes < 1024) return bytes + ' B';
             if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
             return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        // ─── User Guide Generator ──────────────────────────
+        const ugUploadArea = document.getElementById('ugUploadArea');
+        const ugFileInput = document.getElementById('ugFileInput');
+
+        ugUploadArea.addEventListener('click', () => ugFileInput.click());
+        ugUploadArea.addEventListener('dragover', (e) => { e.preventDefault(); ugUploadArea.classList.add('dragging'); });
+        ugUploadArea.addEventListener('dragleave', () => { ugUploadArea.classList.remove('dragging'); });
+        ugUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            ugUploadArea.classList.remove('dragging');
+            if (e.dataTransfer.files.length > 0) handleUgFileSelect(e.dataTransfer.files[0]);
+        });
+        ugFileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) handleUgFileSelect(e.target.files[0]);
+        });
+
+        function handleUgFileSelect(file) {
+            const name = file.name.toLowerCase();
+            const isMd = name.endsWith('.md');
+            const isZip = name.endsWith('.zip');
+            const ugStatus = document.getElementById('ugStatus');
+
+            if (!isMd && !isZip) {
+                ugStatus.className = 'status error';
+                ugStatus.textContent = '❌ Only markdown (.md) or zip (.zip) files are supported';
+                return;
+            }
+            const maxSize = isZip ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+            if (file.size > maxSize) {
+                ugStatus.className = 'status error';
+                ugStatus.textContent = `❌ File too large (max ${isZip ? '50' : '10'}MB)`;
+                return;
+            }
+            ugFile = file;
+            document.getElementById('ugFileName').textContent = file.name;
+            document.getElementById('ugFileSize').textContent = formatFileSize(file.size);
+            document.getElementById('ugFileInfo').classList.add('show');
+            document.getElementById('ugGenerateBtn').classList.add('show');
+            ugStatus.className = 'status success';
+            ugStatus.textContent = isZip
+                ? '✅ ZIP ready — will extract markdown + images and generate user guide'
+                : '✅ Markdown file ready for user guide generation';
+        }
+
+        async function generateUserGuide() {
+            if (!ugFile) return;
+
+            const btn = document.getElementById('ugGenerateBtn');
+            const ugStatus = document.getElementById('ugStatus');
+            const ugSpinner = document.getElementById('ugSpinner');
+            const ugProgress = document.getElementById('ugProgress');
+            const ugDownload = document.getElementById('ugDownloadSection');
+
+            btn.disabled = true;
+            ugStatus.className = 'status info';
+            ugStatus.textContent = '🔄 Starting user guide generation...';
+            ugSpinner.style.display = 'block';
+            ugProgress.style.display = 'block';
+            ugDownload.style.display = 'none';
+            document.getElementById('ugProgressLog').innerHTML = '';
+
+            try {
+                const formData = new FormData();
+                formData.append('file', ugFile);
+                const bizCtx = document.getElementById('ugBusinessContext').value.trim();
+                if (bizCtx) formData.append('business_context', bizCtx);
+
+                const startResp = await fetch('/generate-user-guide', { method: 'POST', body: formData });
+                if (!startResp.ok) {
+                    const err = await startResp.json();
+                    throw new Error(err.detail || 'Failed to start generation');
+                }
+                const startData = await startResp.json();
+                ugSessionId = startData.session_id;
+
+                // Poll progress
+                let done = false;
+                while (!done) {
+                    await new Promise(r => setTimeout(r, 2000));
+                    const progResp = await fetch(`/user-guide-progress/${ugSessionId}`);
+                    if (!progResp.ok) continue;
+                    const prog = await progResp.json();
+
+                    document.getElementById('ugProgressMessage').textContent = prog.message || 'Working...';
+                    document.getElementById('ugProgressPercent').textContent = (prog.percentage || 0) + '%';
+                    document.getElementById('ugProgressBar').style.width = (prog.percentage || 0) + '%';
+
+                    // Append log line
+                    if (prog.message && prog.message.startsWith('✓')) {
+                        const logEl = document.getElementById('ugProgressLog');
+                        const diffStr = prog.diff
+                            ? ` <span style="color:#27ae60">+${prog.diff.added}</span> <span style="color:#e74c3c">-${prog.diff.removed || 0}</span> <span style="color:#f39c12">~${prog.diff.changed}</span>`
+                            : '';
+                        logEl.innerHTML += `<div>${prog.message}${diffStr}</div>`;
+                        logEl.scrollTop = logEl.scrollHeight;
+                    }
+
+                    if (prog.status === 'complete') {
+                        done = true;
+                        ugOutputFilename = prog.output_filename;
+                    } else if (prog.status === 'error') {
+                        throw new Error(prog.message || 'Generation failed');
+                    }
+                }
+
+                ugSpinner.style.display = 'none';
+                ugStatus.className = 'status success';
+                ugStatus.textContent = '✅ User guide generated successfully!';
+                ugDownload.style.display = 'block';
+
+            } catch (error) {
+                console.error('User guide generation error:', error);
+                ugStatus.className = 'status error';
+                ugStatus.textContent = `❌ ${error.message}`;
+                ugSpinner.style.display = 'none';
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function downloadUserGuide(format) {
+            if (!ugSessionId || !ugOutputFilename) return;
+            let url, downloadName;
+            if (format === 'zip') {
+                url = `/download-zip/${ugSessionId}/${ugOutputFilename}`;
+                downloadName = ugOutputFilename.replace('.md', '_UserGuide.zip');
+            } else if (format === 'docx') {
+                url = `/download-docx/${ugSessionId}/${ugOutputFilename}`;
+                downloadName = ugOutputFilename.replace('.md', '.docx');
+            } else {
+                url = `/download/${ugSessionId}/${ugOutputFilename}`;
+                downloadName = ugOutputFilename;
+            }
+            try {
+                const resp = await fetch(url);
+                if (!resp.ok) throw new Error('Download failed');
+                const blob = await resp.blob();
+                const a = document.createElement('a');
+                a.href = window.URL.createObjectURL(blob);
+                a.download = downloadName;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(a.href);
+                document.body.removeChild(a);
+            } catch (err) {
+                document.getElementById('ugStatus').className = 'status error';
+                document.getElementById('ugStatus').textContent = `❌ ${err.message}`;
+            }
         }
 
         // Step navigation

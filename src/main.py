@@ -2093,6 +2093,217 @@ async def convert_markdown_to_docx(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ─── User Guide Generation ────────────────────────────────────────────
+
+@app.post("/generate-user-guide")
+async def generate_user_guide(file: UploadFile = File(...), business_context: str = Form(default="")):
+    """
+    Generate an end-user guide from a technical documentation ZIP (markdown + images).
+
+    Accepts:
+      - .zip containing a .md file and an optional images/ directory (max 50 MB)
+      - Plain .md file (max 10 MB)
+
+    Returns JSON with session_id and the generated filename for subsequent downloads.
+    """
+    import uuid
+    import zipfile as zf
+
+    MAX_MD_SIZE = 10 * 1024 * 1024   # 10 MB
+    MAX_ZIP_SIZE = 50 * 1024 * 1024  # 50 MB
+
+    try:
+        # ── Validate upload ──────────────────────────────────
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="No file provided")
+
+        ext = Path(file.filename).suffix.lower()
+        if ext not in ('.md', '.zip'):
+            raise HTTPException(status_code=400, detail="Only .md or .zip files are accepted")
+
+        content = await file.read()
+        if ext == '.md' and len(content) > MAX_MD_SIZE:
+            raise HTTPException(status_code=400, detail="Markdown file exceeds 10 MB limit")
+        if ext == '.zip' and len(content) > MAX_ZIP_SIZE:
+            raise HTTPException(status_code=400, detail="ZIP file exceeds 50 MB limit")
+
+        session_id = str(uuid.uuid4())
+        session_dir = config.TEMP_DIR / session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+
+        source_markdown = ""
+        images_dir: Optional[Path] = None
+
+        if ext == '.zip':
+            zip_path = session_dir / file.filename
+            zip_path.write_bytes(content)
+
+            # Validate ZIP integrity
+            if not zf.is_zipfile(zip_path):
+                shutil.rmtree(session_dir, ignore_errors=True)
+                raise HTTPException(status_code=400, detail="Invalid ZIP file")
+
+            extract_dir = session_dir / "extracted"
+            extract_dir.mkdir(exist_ok=True)
+            with zf.ZipFile(zip_path, 'r') as z:
+                # Security: reject entries with path traversal
+                for info in z.infolist():
+                    if info.filename.startswith('/') or '..' in info.filename:
+                        shutil.rmtree(session_dir, ignore_errors=True)
+                        raise HTTPException(status_code=400, detail="ZIP contains unsafe paths")
+                z.extractall(extract_dir)
+
+            # Find markdown file (look at root and one level deep)
+            md_files = list(extract_dir.glob("*.md"))
+            if not md_files:
+                md_files = list(extract_dir.rglob("*.md"))
+            if not md_files:
+                shutil.rmtree(session_dir, ignore_errors=True)
+                raise HTTPException(status_code=400, detail="No .md file found in ZIP")
+
+            md_file = md_files[0]
+            source_markdown = md_file.read_text(encoding='utf-8')
+
+            # Find images directory (images/ at same level as .md or one level up)
+            candidate_images = md_file.parent / "images"
+            if not candidate_images.exists():
+                candidate_images = extract_dir / "images"
+            if candidate_images.exists() and candidate_images.is_dir():
+                images_dir = candidate_images
+                logger.info(f"Found images directory with {sum(1 for _ in images_dir.iterdir())} files")
+
+        else:
+            # Plain markdown
+            try:
+                source_markdown = content.decode('utf-8')
+            except UnicodeDecodeError:
+                shutil.rmtree(session_dir, ignore_errors=True)
+                raise HTTPException(status_code=400, detail="File is not valid UTF-8 text")
+
+        if not source_markdown.strip():
+            shutil.rmtree(session_dir, ignore_errors=True)
+            raise HTTPException(status_code=400, detail="Markdown file is empty")
+
+        logger.info(
+            f"User guide generation started: session={session_id}, "
+            f"source={len(source_markdown)} chars, images={'yes' if images_dir else 'no'}"
+        )
+
+        # ── Kick off generation in background ────────────────
+        async def _run_generation():
+            try:
+                doc_gen = await get_doc_generator()
+                template_path = config.TEMPLATES_DIR / "UserGuideTemplate.md"
+
+                working_dir = session_dir / "working"
+                working_dir.mkdir(exist_ok=True)
+
+                user_guide_content = await doc_gen.generate_user_guide(
+                    session_id=session_id,
+                    working_directory=working_dir,
+                    source_markdown=source_markdown,
+                    template_path=template_path,
+                    images_dir=images_dir,
+                    business_context=business_context.strip() if business_context else "",
+                )
+
+                # ── Save output ──────────────────────────────
+                output_dir = get_output_dir(session_id)
+                output_dir.mkdir(parents=True, exist_ok=True)
+
+                # Derive a name from the source markdown filename or fallback
+                source_name = "UserGuide"
+                if ext == '.zip' and md_files:
+                    stem = md_files[0].stem
+                    # Strip common suffixes from technical doc names
+                    for suffix in ('_Documentation', '_Technical', '_TechDoc'):
+                        stem = stem.replace(suffix, '')
+                    source_name = stem + "_UserGuide" if stem else "UserGuide"
+
+                output_filename = f"{source_name}.md"
+                output_file = output_dir / output_filename
+                output_file.write_text(user_guide_content, encoding='utf-8')
+
+                # Copy images to output dir for download endpoints
+                if images_dir and images_dir.exists():
+                    output_images = output_dir / "images"
+                    if output_images.exists():
+                        shutil.rmtree(output_images)
+                    shutil.copytree(images_dir, output_images)
+                    logger.info(f"Copied images to output: {output_images}")
+
+                # Also check if the working dir has images that were added during generation
+                working_images = working_dir / "images"
+                if working_images.exists():
+                    output_images = output_dir / "images"
+                    output_images.mkdir(exist_ok=True)
+                    for img in working_images.iterdir():
+                        if img.is_file():
+                            dest = output_images / img.name
+                            if not dest.exists():
+                                shutil.copy2(img, dest)
+
+                logger.info(f"User guide saved: {output_file}")
+
+                # Store result for the progress/status endpoint
+                doc_gen._generation_progress[session_id]["output_filename"] = output_filename
+
+            except Exception as e:
+                logger.exception(f"User guide generation failed for {session_id}")
+                doc_gen = await get_doc_generator()
+                doc_gen._generation_progress[session_id] = {
+                    "stage": "error",
+                    "current": 0,
+                    "total": 1,
+                    "message": f"Error: {str(e)}",
+                    "percentage": 0,
+                }
+
+        asyncio.create_task(_run_generation())
+
+        return JSONResponse({
+            "session_id": session_id,
+            "status": "started",
+            "message": "User guide generation started"
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error starting user guide generation")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/user-guide-progress/{session_id}")
+async def get_user_guide_progress(session_id: str):
+    """Get the current progress of user guide generation."""
+    try:
+        doc_gen = await get_doc_generator()
+        progress = doc_gen.get_progress(session_id)
+
+        if progress is None:
+            return {
+                "session_id": session_id,
+                "status": "not_started",
+                "message": "User guide generation has not started"
+            }
+
+        status = "in_progress"
+        if progress["stage"] == "complete":
+            status = "complete"
+        elif progress["stage"] == "error":
+            status = "error"
+
+        return {
+            "session_id": session_id,
+            "status": status,
+            **progress
+        }
+    except Exception as e:
+        logger.exception(f"Error getting user guide progress for {session_id}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/doc-progress/{session_id}")
 async def get_documentation_progress(session_id: str):
     """
