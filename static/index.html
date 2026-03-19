@@ -1914,8 +1914,10 @@
 
             const canvasApps = components.filter(c => c.type === 'canvas_app');
             const flows = components.filter(c => c.type === 'power_automate');
+            const desktopFlows = components.filter(c => c.type === 'desktop_flow');
             const classicWorkflows = components.filter(c => c.type === 'classic_workflow');
             const dvFormulas = components.filter(c => c.type === 'dataverse_formula');
+            const copilotAgents = components.filter(c => c.type === 'copilot_agent');
 
             let html = '';
 
@@ -1970,6 +1972,38 @@
             if (dvFormulas.length > 0) {
                 html += '<div class="component-section"><h3>🔢 Dataverse Formulas</h3>';
                 dvFormulas.forEach(comp => {
+                    html += `
+                        <div class="component-item" data-path="${comp.path}">
+                            <input type="checkbox" class="component-checkbox" data-path="${comp.path}">
+                            <div class="component-info">
+                                <div class="component-name">${comp.display_name}</div>
+                                <div class="component-type">${comp.name}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            }
+
+            if (desktopFlows.length > 0) {
+                html += '<div class="component-section"><h3>🖥️ Desktop Flows</h3>';
+                desktopFlows.forEach(comp => {
+                    html += `
+                        <div class="component-item" data-path="${comp.path}">
+                            <input type="checkbox" class="component-checkbox" data-path="${comp.path}">
+                            <div class="component-info">
+                                <div class="component-name">${comp.display_name}</div>
+                                <div class="component-type">${comp.name}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            }
+
+            if (copilotAgents.length > 0) {
+                html += '<div class="component-section"><h3>🤖 Copilot Studio Agents</h3>';
+                copilotAgents.forEach(comp => {
                     html += `
                         <div class="component-item" data-path="${comp.path}">
                             <input type="checkbox" class="component-checkbox" data-path="${comp.path}">
@@ -2175,8 +2209,10 @@
             const byType = {
                 '📱 Canvas Apps': [],
                 '⚡ Power Automate Flows': [],
+                '🖥️ Desktop Flows': [],
                 '⚙️ Classic Workflows / Business Rules': [],
                 '🔢 Dataverse Formulas': [],
+                '🤖 Copilot Studio Agents': [],
                 '📦 Other': []
             };
 
@@ -2186,10 +2222,14 @@
                         byType['📱 Canvas Apps'].push(comp.display_name || comp.name);
                     } else if (comp.type === 'power_automate') {
                         byType['⚡ Power Automate Flows'].push(comp.display_name || comp.name);
+                    } else if (comp.type === 'desktop_flow') {
+                        byType['🖥️ Desktop Flows'].push(comp.display_name || comp.name);
                     } else if (comp.type === 'classic_workflow') {
                         byType['⚙️ Classic Workflows / Business Rules'].push(comp.display_name || comp.name);
                     } else if (comp.type === 'dataverse_formula') {
                         byType['🔢 Dataverse Formulas'].push(comp.display_name || comp.name);
+                    } else if (comp.type === 'copilot_agent') {
+                        byType['🤖 Copilot Studio Agents'].push(comp.display_name || comp.name);
                     } else {
                         byType['📦 Other'].push(comp.display_name || comp.name);
                     }
@@ -2372,7 +2412,10 @@
                 appScreens.forEach(screen => {
                     const opt = document.createElement('option');
                     opt.value = screen.path;
-                    const icon = screen.type === 'power_automate' ? '⚡' : '📱';
+                    const icon = screen.type === 'power_automate' ? '⚡' : 
+                                 screen.type === 'desktop_flow' ? '🖥️' : 
+                                 screen.type === 'copilot_agent' ? '🤖' : 
+                                 screen.type === 'classic_workflow' ? '⚙️' : '📱';
                     opt.textContent = `${icon} ${screen.display_name}`;
                     compSelect.appendChild(opt);
                 });

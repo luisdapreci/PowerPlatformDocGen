@@ -21,6 +21,8 @@ class ComponentType(str, Enum):
     POWER_AUTOMATE = "power_automate"
     DATAVERSE_FORMULA = "dataverse_formula"
     CLASSIC_WORKFLOW = "classic_workflow"
+    DESKTOP_FLOW = "desktop_flow"
+    COPILOT_AGENT = "copilot_agent"
 
 
 class SolutionComponent(BaseModel):

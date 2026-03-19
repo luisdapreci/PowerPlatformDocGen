@@ -588,6 +588,16 @@ Do not just embed images — describe what you see in them to create thorough do
 - `### 3.3 User Interface` — describe screen layout, controls, navigation visible in the screenshot
 - `### 4.2 Features` — describe user-facing features shown
 - `### 8.2 Screenshots or Diagrams` — fallback if no better fit"""
+            elif 'desktop' in ctx_lower or 'pad' in ctx_lower or 'robin' in ctx_lower:
+                section_hint = """**LIKELY RELEVANT SECTIONS:**
+- `### 3.4 Logic and Automation` — describe desktop automation steps, UI element interactions, browser automation visible
+- `### 3.3 User Interface` — if showing the desktop app UI being automated
+- `### 8.2 Screenshots or Diagrams` — fallback if no better fit"""
+            elif 'bot' in ctx_lower or 'copilot' in ctx_lower or 'agent' in ctx_lower or 'topic' in ctx_lower:
+                section_hint = """**LIKELY RELEVANT SECTIONS:**
+- `### 3.4 Logic and Automation` — describe agent topics, conversation flow, adaptive cards visible
+- `### 3.3 User Interface` — if showing the agent's chat interface or adaptive cards
+- `### 8.2 Screenshots or Diagrams` — fallback if no better fit"""
             elif 'workflow' in ctx_lower or 'flow' in ctx_lower:
                 section_hint = """**LIKELY RELEVANT SECTIONS:**
 - `### 3.4 Logic and Automation` — describe flow steps, triggers, conditions, actions visible

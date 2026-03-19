@@ -101,16 +101,67 @@ DATAVERSE (Cloud Database):
 
 SOLUTION STRUCTURE:
 - solution.xml = Root manifest with version, publisher, components list
-- customizations.xml = Dataverse customizations (tables, forms, views)
+- customizations.xml = Dataverse customizations (tables, forms, views, workflow definitions)
 - CanvasApps/ = Canvas app packages (.msapp files)
-- Workflows/ = Power Automate flow definitions (JSON)
+- Workflows/ = Power Automate flow definitions (JSON) — includes both cloud flows and desktop flows
 - WebResources/ = JavaScript, HTML, CSS, images
+- bots/ = Copilot Studio agent definitions (bot.xml, configuration.json)
+- botcomponents/ = Copilot Studio topics, GPT config, actions (YAML Adaptive Dialogs)
+- desktopflowbinaries/ = UI element screenshots and assets for desktop flows
+- Assets/ = Relationship mappings (bot→flow, bot→AI model, bot→connection)
+- environmentvariabledefinitions/ = Environment variable configs
+
+POWER AUTOMATE DESKTOP (PAD) FLOWS:
+- Desktop flows automate UI interactions (browser, desktop apps, Excel, etc.)
+- Identified by Category=6 in customizations.xml (vs Category=5 for cloud flows)
+- PAD scripts use "Robin" scripting language — sequential action-based automation
+- Key file locations:
+  * Workflows/*.json = Metadata shell (inputs/outputs schema, schema version)
+  * customizations.xml <Definition> element = Actual PAD script (the core logic)
+  * desktopflowbinaries/ = UI element screenshots linked to flows via workflowid
+- PAD script structure:
+  * Actions: WebAutomation.LaunchBrowser, Click, SetText, GetDetailsOfElement
+  * Excel: Excel.LaunchExcel, Excel.ReadFromExcel, Excel.WriteToExcel
+  * Variables: SET, Variables.IncreaseVariable
+  * Control flow: LOOP, IF/ELSE/END, WAIT, Error handling with ON BLOCK ERROR
+  * UI Selectors: CSS selectors and UI automation selectors for element targeting
+- UIFlowType values: 0=Unattended, 2=Attended
+- When analyzing PAD scripts, focus on: overall automation workflow, data sources/targets,
+  error handling patterns, UI elements being automated, and business process being automated
+
+COPILOT STUDIO AGENTS (Bots):
+- AI-powered conversational agents with topics, knowledge sources, and actions
+- Structure: Parent bot + child topic components + knowledge sources + AI models
+- Key file locations:
+  * bots/{name}/bot.xml = Agent configuration (name, auth mode, channels, published status)
+  * bots/{name}/configuration.json = Channel config (Teams, M365 Copilot), AI settings, GPT settings
+  * botcomponents/{name}.gpt.default/data = GPT/AI model configuration with system instructions
+  * botcomponents/{name}.topic.{TopicName}/data = Topic definitions (YAML Adaptive Dialogs)
+  * botcomponents/{name}.topic.{KnowledgeSource}/data = Knowledge source definitions
+  * botcomponents/{name}.action.{ActionName}/data = Custom actions/connectors
+  * Assets/botcomponent_workflowset.xml = Maps topics to linked cloud flows
+  * Assets/botcomponent_msdyn_aimodelset.xml = Maps topics to AI Builder models
+  * Assets/botcomponent_connectionreferenceset.xml = Maps actions to connectors
+- YAML Adaptive Dialog format:
+  * kind: AdaptiveDialog — top-level dialog definition
+  * beginDialog.kind: OnRecognizedIntent — trigger with intent and triggerQueries
+  * Actions: AdaptiveCardPrompt, SendActivity, SetVariable, ConditionGroup,
+    SearchAndSummarizeContent, InvokeFlowAction, InvokeAIBuilderModelAction,
+    ParseValue, GotoAction, BeginDialog
+  * SearchAndSummarizeContent uses knowledgeSources for RAG-style grounded answers
+  * InvokeFlowAction calls Power Automate cloud flows from the agent
+- System topics (Greeting, Fallback, Escalate, OnError, etc.) are standard patterns
+- Custom topics contain the agent's core business logic
+- When analyzing Copilot agents, focus on: purpose (from GPT instructions), custom topics,
+  knowledge sources, linked cloud flows, AI models used, and channel deployments
 
 📋 ANALYSIS BEST PRACTICES:
 - For Canvas Apps: Focus on Power Fx formulas in .fx.yaml files - they contain the core logic
-- For Flows: Document trigger, conditions, and action sequence with business purpose
-- For Dependencies: Note connections between apps, flows, and data sources
-- For Business Logic: Explain WHAT the formula/flow does, not just WHAT it says
+- For Cloud Flows: Document trigger, conditions, and action sequence with business purpose
+- For Desktop Flows: Focus on the PAD script from customizations.xml — describe the UI automation workflow step by step
+- For Copilot Agents: Start with GPT instructions (gpt.default/data), then analyze custom topics, knowledge sources, and linked flows
+- For Dependencies: Note connections between apps, flows, bots, and data sources
+- For Business Logic: Explain WHAT the formula/flow/agent does, not just WHAT it says
 - Extract meaningful component names and purposes from manifests
 
 🎯 DOCUMENTATION GOALS:
@@ -207,6 +258,7 @@ Use these tools to explore and analyze Power Platform components directly."""
             canvas_apps = [_norm(c) for c in selected_components if c.endswith('.msapp')]
             flows = [_norm(c) for c in selected_components
                      if _norm(c).startswith('Workflows/') and c.endswith('.json')]
+            copilot_agents = [_norm(c) for c in selected_components if _norm(c).startswith('bots/')]
             
             if canvas_apps:
                 context_parts.append("📱 SELECTED CANVAS APPS:")
@@ -216,13 +268,21 @@ Use these tools to explore and analyze Power Platform components directly."""
                 context_parts.append("")
             
             if flows:
-                context_parts.append("⚡ SELECTED POWER AUTOMATE FLOWS:")
+                context_parts.append("⚡ SELECTED FLOWS (Cloud & Desktop):")
                 context_parts.append(f"   The user selected {len(flows)} flow(s):")
                 for idx, flow in enumerate(flows, 1):
                     flow_name = Path(flow).stem  # Extract name from path
                     context_parts.append(f"   {idx}. {flow_name}")
                     # Also show the full path for clarity
                     context_parts.append(f"      Path: {flow}")
+                context_parts.append("")
+            
+            if copilot_agents:
+                context_parts.append("🤖 SELECTED COPILOT STUDIO AGENTS:")
+                for idx, agent in enumerate(copilot_agents, 1):
+                    agent_name = Path(agent).name
+                    context_parts.append(f"   {idx}. {agent_name}")
+                    context_parts.append(f"      Path: {agent}")
                 context_parts.append("")
             
             context_parts.append("💡 CRITICAL: When the user asks about 'the app' or 'the flow', they mean the components listed above.")
@@ -234,7 +294,11 @@ Use these tools to explore and analyze Power Platform components directly."""
                 context_parts.append(f"   - 'the flow' = {Path(flows[0]).stem}")
             elif len(flows) > 1:
                 context_parts.append(f"   - 'the flows' = the {len(flows)} flows listed above")
-            if not canvas_apps and not flows:
+            if len(copilot_agents) == 1:
+                context_parts.append(f"   - 'the agent' or 'the copilot' = {Path(copilot_agents[0]).name}")
+            elif len(copilot_agents) > 1:
+                context_parts.append(f"   - 'the agents' = the {len(copilot_agents)} agents listed above")
+            if not canvas_apps and not flows and not copilot_agents:
                 # Fallback: list all paths verbatim so the AI still knows what was selected
                 context_parts.append("   Selected paths:")
                 for c in selected_components:
@@ -291,11 +355,53 @@ Use these tools to explore and analyze Power Platform components directly."""
                 flow_files = list(workflows_dir.glob("*.json"))
                 if flow_files:
                     context_parts.append("")
-                    context_parts.append("⚡ POWER AUTOMATE FLOWS:")
+                    context_parts.append("⚡ POWER AUTOMATE FLOWS (Cloud & Desktop):")
                     for flow_file in flow_files[:5]:
                         context_parts.append(f"   - {flow_file}")
                     if len(flow_files) > 5:
                         context_parts.append(f"   - ... and {len(flow_files) - 5} more")
+            
+            # Check for Copilot Studio agents
+            bots_dir = working_directory / "bots"
+            if bots_dir.exists() and bots_dir.is_dir():
+                bot_dirs = [d for d in bots_dir.iterdir() if d.is_dir()]
+                if bot_dirs:
+                    context_parts.append("")
+                    context_parts.append("🤖 COPILOT STUDIO AGENTS:")
+                    for bot_dir in bot_dirs:
+                        bot_name = bot_dir.name
+                        # Try to get display name from bot.xml
+                        bot_xml = bot_dir / "bot.xml"
+                        display_name = bot_name
+                        if bot_xml.exists():
+                            try:
+                                import xml.etree.ElementTree as ET_local
+                                tree = ET_local.parse(bot_xml)
+                                name_elem = tree.getroot().find("name")
+                                if name_elem is not None and name_elem.text:
+                                    display_name = name_elem.text.strip()
+                            except Exception:
+                                pass
+                        context_parts.append(f"   - {display_name} (schema: {bot_name})")
+                        context_parts.append(f"     Path: bots/{bot_name}/")
+                        # Count topics
+                        botcomponents_dir = working_directory / "botcomponents"
+                        if botcomponents_dir.exists():
+                            topics = [d for d in botcomponents_dir.iterdir()
+                                      if d.is_dir() and d.name.startswith(bot_name + ".topic.")]
+                            if topics:
+                                context_parts.append(f"     Topics: {len(topics)} topic components")
+                        config_json = bot_dir / "configuration.json"
+                        if config_json.exists():
+                            context_parts.append(f"     Config: {config_json}")
+            
+            # Check for desktop flow binaries
+            dfb_dir = working_directory / "desktopflowbinaries"
+            if dfb_dir.exists() and dfb_dir.is_dir():
+                dfb_count = sum(1 for d in dfb_dir.iterdir() if d.is_dir())
+                if dfb_count:
+                    context_parts.append("")
+                    context_parts.append(f"🖥️ DESKTOP FLOW BINARIES: {dfb_count} asset folders (UI screenshots)")
             
             # Check for solution.xml
             solution_xml = working_directory / "solution.xml"
@@ -309,6 +415,8 @@ Use these tools to explore and analyze Power Platform components directly."""
             context_parts.append("   - Use file_search to find files (e.g., '**/*.fx.yaml' for formulas)")
             context_parts.append("   - Use list_dir to explore directory contents")
             context_parts.append("   - The .fx.yaml files in src/ contain ALL the Power Fx formulas")
+            context_parts.append("   - Desktop flow PAD scripts are in customizations.xml <Definition> elements")
+            context_parts.append("   - Copilot agent topics are YAML files in botcomponents/*/data")
             
         except Exception as e:
             logger.error(f"Error building file structure context: {e}")

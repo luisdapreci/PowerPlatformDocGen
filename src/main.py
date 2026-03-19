@@ -12,6 +12,7 @@ from pathlib import Path
 import shutil
 import json
 import re
+import xml.etree.ElementTree as ET
 
 import config
 from models import (
@@ -353,10 +354,68 @@ def _get_flow_display_name(flow_file: Path) -> str:
     return cleaned.title()
 
 
+def _parse_customizations_workflow_map(extract_dir: Path) -> Dict[str, dict]:
+    """
+    Parse customizations.xml to build a map of workflow JSON filenames to their metadata.
+    Returns dict mapping normalised JsonFileName (e.g. 'Creation-AKALinks-4E6B...json')
+    to {'category': int, 'name': str, 'workflow_id': str, 'ui_flow_type': int|None}.
+    Category 5 = cloud flow, Category 6 = desktop flow.
+    """
+    workflow_map: Dict[str, dict] = {}
+    customizations_path = extract_dir / "customizations.xml"
+    if not customizations_path.exists():
+        return workflow_map
+    try:
+        tree = ET.parse(customizations_path)
+        root = tree.getroot()
+        for workflow_elem in root.iter("Workflow"):
+            json_filename_elem = workflow_elem.find("JsonFileName")
+            category_elem = workflow_elem.find("Category")
+            name_attr = workflow_elem.get("Name", "")
+            wf_id = workflow_elem.get("WorkflowId", "")
+            ui_flow_type_elem = workflow_elem.find("UIFlowType")
+
+            if json_filename_elem is not None and json_filename_elem.text:
+                # JsonFileName is like /Workflows/SomeName-GUID.json — extract the filename
+                json_fname = json_filename_elem.text.strip().lstrip("/")
+                if json_fname.startswith("Workflows/"):
+                    json_fname = json_fname[len("Workflows/"):]
+
+                category = int(category_elem.text) if category_elem is not None and category_elem.text else 5
+                ui_flow_type = int(ui_flow_type_elem.text) if ui_flow_type_elem is not None and ui_flow_type_elem.text else None
+
+                workflow_map[json_fname] = {
+                    "category": category,
+                    "name": name_attr,
+                    "workflow_id": wf_id.strip("{}"),
+                    "ui_flow_type": ui_flow_type,
+                }
+    except Exception as e:
+        logger.warning(f"Could not parse customizations.xml for workflow map: {e}")
+    return workflow_map
+
+
+def _get_copilot_agent_display_name(bot_dir: Path) -> str:
+    """Read bot.xml in a bot folder and return the display name."""
+    bot_xml = bot_dir / "bot.xml"
+    if bot_xml.exists():
+        try:
+            tree = ET.parse(bot_xml)
+            root = tree.getroot()
+            name_elem = root.find("name")
+            if name_elem is not None and name_elem.text:
+                return name_elem.text.strip()
+        except Exception as e:
+            logger.warning(f"Could not parse bot.xml in {bot_dir}: {e}")
+    # Fallback: use folder name
+    return bot_dir.name.replace("_", " ").title()
+
+
 @app.get("/components/{session_id}", response_model=ComponentsListResponse)
 async def list_components(session_id: str):
     """
-    List all available components (Canvas Apps and Power Automate flows) in the solution
+    List all available components (Canvas Apps, Power Automate flows, Desktop Flows,
+    Copilot Studio Agents, etc.) in the solution.
     """
     try:
         session_dir = get_session_dir(session_id)
@@ -366,6 +425,9 @@ async def list_components(session_id: str):
             raise HTTPException(status_code=404, detail="Session not found")
         
         components = []
+        
+        # Parse customizations.xml once to distinguish desktop flows from cloud flows
+        workflow_map = _parse_customizations_workflow_map(extract_dir)
         
         # Find Canvas Apps (.msapp files in CanvasApps folder)
         canvas_apps_dir = extract_dir / "CanvasApps"
@@ -379,13 +441,27 @@ async def list_components(session_id: str):
                     display_name=display_name
                 ))
         
-        # Find Power Automate flows (JSON files in Workflows folder)
+        # Find Power Automate flows and Desktop flows (JSON files in Workflows folder)
         workflows_dir = extract_dir / "Workflows"
         if workflows_dir.exists():
             for flow_file in workflows_dir.glob("*.json"):
-                # Skip the workflow-related metadata files
-                if not flow_file.stem.endswith("-ConnectionReferences"):
-                    display_name = _get_flow_display_name(flow_file)
+                if flow_file.stem.endswith("-ConnectionReferences"):
+                    continue
+                
+                wf_meta = workflow_map.get(flow_file.name)
+                is_desktop = wf_meta and wf_meta.get("category") == 6
+                
+                if is_desktop:
+                    # Use the clean name from customizations.xml for desktop flows
+                    display_name = wf_meta["name"] if wf_meta.get("name") else _get_flow_display_name(flow_file)
+                    components.append(SolutionComponent(
+                        name=flow_file.stem,
+                        path=str(flow_file.relative_to(extract_dir)),
+                        type=ComponentType.DESKTOP_FLOW,
+                        display_name=display_name
+                    ))
+                else:
+                    display_name = wf_meta["name"] if (wf_meta and wf_meta.get("name")) else _get_flow_display_name(flow_file)
                     components.append(SolutionComponent(
                         name=flow_file.stem,
                         path=str(flow_file.relative_to(extract_dir)),
@@ -414,6 +490,19 @@ async def list_components(session_id: str):
                         name=formula_file.stem,
                         path=str(formula_file.relative_to(extract_dir)),
                         type=ComponentType.DATAVERSE_FORMULA,
+                        display_name=display_name
+                    ))
+        
+        # Find Copilot Studio agents (bots/ folder)
+        bots_dir = extract_dir / "bots"
+        if bots_dir.exists():
+            for bot_dir in bots_dir.iterdir():
+                if bot_dir.is_dir():
+                    display_name = _get_copilot_agent_display_name(bot_dir)
+                    components.append(SolutionComponent(
+                        name=bot_dir.name,
+                        path=str(bot_dir.relative_to(extract_dir)),
+                        type=ComponentType.COPILOT_AGENT,
                         display_name=display_name
                     ))
         
@@ -1255,6 +1344,124 @@ async def reset_chat_session(session_id: str):
 
 
 # IMPROVEMENT 2 & 3: Helper functions for intelligent file processing
+
+
+def _extract_desktop_flow_definition(extract_dir: Path, workflow_id: str) -> Optional[str]:
+    """
+    Extract the PAD (Power Automate Desktop) script definition for a desktop flow
+    from customizations.xml using the workflow ID.
+    Returns the definition string or None.
+    """
+    customizations_path = extract_dir / "customizations.xml"
+    if not customizations_path.exists():
+        return None
+    try:
+        tree = ET.parse(customizations_path)
+        root = tree.getroot()
+        for wf_elem in root.iter("Workflow"):
+            wf_id = wf_elem.get("WorkflowId", "").strip("{}")
+            if wf_id.lower() == workflow_id.lower():
+                definition_elem = wf_elem.find("Definition")
+                if definition_elem is not None and definition_elem.text:
+                    return definition_elem.text
+                break
+    except Exception as e:
+        logger.warning(f"Could not extract desktop flow definition for {workflow_id}: {e}")
+    return None
+
+
+def _extract_desktop_flow_metadata(extract_dir: Path, workflow_id: str) -> Dict[str, str]:
+    """
+    Extract supplementary metadata (Dependencies, ConnectionReferences, Metadata)
+    for a desktop flow from customizations.xml.
+    """
+    result: Dict[str, str] = {}
+    customizations_path = extract_dir / "customizations.xml"
+    if not customizations_path.exists():
+        return result
+    try:
+        tree = ET.parse(customizations_path)
+        root = tree.getroot()
+        for wf_elem in root.iter("Workflow"):
+            wf_id = wf_elem.get("WorkflowId", "").strip("{}")
+            if wf_id.lower() == workflow_id.lower():
+                for tag in ("Dependencies", "ConnectionReferences", "Metadata", "Inputs", "Outputs"):
+                    elem = wf_elem.find(tag)
+                    if elem is not None and elem.text:
+                        result[tag] = elem.text
+                break
+    except Exception as e:
+        logger.warning(f"Could not extract desktop flow metadata for {workflow_id}: {e}")
+    return result
+
+
+def _collect_copilot_agent_files(extract_dir: Path, bot_folder: str) -> Dict[str, str]:
+    """
+    Collect all relevant files for a Copilot Studio agent.
+    Returns dict of relative_path -> content.
+    """
+    file_contents: Dict[str, str] = {}
+    bot_dir = extract_dir / bot_folder
+    if not bot_dir.exists():
+        return file_contents
+
+    # 1. bot.xml and configuration.json
+    for fname in ("bot.xml", "configuration.json"):
+        fpath = bot_dir / fname
+        if fpath.exists():
+            try:
+                file_contents[f"{bot_folder}/{fname}"] = fpath.read_text(encoding='utf-8')
+            except Exception as e:
+                logger.warning(f"Could not read {fpath}: {e}")
+
+    # 2. Determine the bot schemaname from the folder name
+    bot_schema = bot_dir.name  # e.g. "copilots_header_11e64"
+
+    # 3. Scan botcomponents/ for matching components
+    botcomponents_dir = extract_dir / "botcomponents"
+    if botcomponents_dir.exists():
+        for comp_dir in sorted(botcomponents_dir.iterdir()):
+            if comp_dir.is_dir() and comp_dir.name.startswith(bot_schema + "."):
+                # Read botcomponent.xml
+                bc_xml = comp_dir / "botcomponent.xml"
+                if bc_xml.exists():
+                    try:
+                        file_contents[f"botcomponents/{comp_dir.name}/botcomponent.xml"] = bc_xml.read_text(encoding='utf-8')
+                    except Exception:
+                        pass
+                # Read data file (YAML Adaptive Dialog or GPT config)
+                data_file = comp_dir / "data"
+                if data_file.exists() and data_file.is_file():
+                    try:
+                        file_contents[f"botcomponents/{comp_dir.name}/data"] = data_file.read_text(encoding='utf-8')
+                    except Exception:
+                        pass
+
+    # 4. Read Assets/ relationship files
+    assets_dir = extract_dir / "Assets"
+    if assets_dir.exists():
+        for asset_file in sorted(assets_dir.iterdir()):
+            if asset_file.suffix == '.xml' and asset_file.name.startswith("botcomponent_"):
+                try:
+                    file_contents[f"Assets/{asset_file.name}"] = asset_file.read_text(encoding='utf-8')
+                except Exception:
+                    pass
+
+    # 5. Read environment variable definitions if present
+    envvar_dir = extract_dir / "environmentvariabledefinitions"
+    if envvar_dir.exists():
+        for ev_dir in sorted(envvar_dir.iterdir()):
+            if ev_dir.is_dir() and ev_dir.name.startswith(bot_schema + "."):
+                ev_file = ev_dir / "environmentvariabledefinition.xml"
+                if ev_file.exists():
+                    try:
+                        file_contents[f"environmentvariabledefinitions/{ev_dir.name}/environmentvariabledefinition.xml"] = ev_file.read_text(encoding='utf-8')
+                    except Exception:
+                        pass
+
+    return file_contents
+
+
 def _prioritize_files_for_analysis(file_contents: Dict[str, str]) -> List[tuple]:
     """
     Prioritize files by importance for Power Platform analysis.
@@ -1282,6 +1489,18 @@ def _prioritize_files_for_analysis(file_contents: Dict[str, str]) -> List[tuple]
         elif 'formulas/' in path_lower and path_lower.endswith('.xaml'):
             score = 2400
         
+        # High priority: Copilot Studio GPT configuration (system instructions)
+        elif 'botcomponents/' in path_lower and '.gpt.' in path_lower and path_lower.endswith('/data'):
+            score = 2300
+        
+        # High priority: Copilot Studio topic data (Adaptive Dialog YAML)
+        elif 'botcomponents/' in path_lower and '.topic.' in path_lower and path_lower.endswith('/data'):
+            score = 2200
+        
+        # High priority: Desktop flow PAD scripts (Robin)
+        elif '_pad_script.robin' in path_lower:
+            score = 2100
+        
         # High priority: Workflows (Power Automate cloud flows)
         # Scored below canvas and Dataverse formulas.
         elif 'workflows' in path_lower and path_lower.endswith('.json'):
@@ -1289,6 +1508,11 @@ def _prioritize_files_for_analysis(file_contents: Dict[str, str]) -> List[tuple]
             # Boost for main workflow files (non-connection references)
             if 'connectionreferences' not in path_lower:
                 score += 500
+        
+        # Medium-high priority: Copilot bot configuration
+        elif ('bots/' in path_lower and path_lower.endswith('bot.xml')) or \
+             ('bots/' in path_lower and path_lower.endswith('configuration.json')):
+            score = 1900
         
         # Medium-high priority: Classic workflows / business rules (XAML)
         elif 'workflows' in path_lower and path_lower.endswith('.xaml'):
@@ -1321,7 +1545,15 @@ def _prioritize_files_for_analysis(file_contents: Dict[str, str]) -> List[tuple]
             score = 300
         
         # Lower priority: Assets
-        elif 'assets' in path_lower:
+        elif 'assets/' in path_lower and path_lower.endswith('.xml'):
+            score = 200
+        
+        # Bot component metadata XML (not the data files)
+        elif 'botcomponents/' in path_lower and path_lower.endswith('botcomponent.xml'):
+            score = 250
+        
+        # Environment variable definitions
+        elif 'environmentvariabledefinitions/' in path_lower:
             score = 200
         
         # Default priority
@@ -1355,6 +1587,8 @@ def _separate_critical_files(prioritized_files: List[tuple]) -> tuple:
     canvas_files = []          # .fx.yaml Power Fx screen formulas
     dataverse_formulas = []     # Formulas/*.yaml calculated columns
     dataverse_xaml = []         # Formulas/*.xaml rollup/BPF definitions
+    copilot_topics = []         # Copilot GPT config + topic Adaptive Dialogs
+    desktop_flows = []          # Desktop flow PAD scripts
     cloud_flows = []            # Workflows/*.json Power Automate
     classic_workflows = []      # Workflows/*.xaml business rules
     
@@ -1367,6 +1601,13 @@ def _separate_critical_files(prioritized_files: List[tuple]) -> tuple:
             dataverse_formulas.append((path, content))
         elif 'formulas/' in path_lower and path_lower.endswith('.xaml'):
             dataverse_xaml.append((path, content))
+        elif 'botcomponents/' in path_lower and path_lower.endswith('/data'):
+            copilot_topics.append((path, content))
+        elif ('bots/' in path_lower and path_lower.endswith('bot.xml')) or \
+             ('bots/' in path_lower and path_lower.endswith('configuration.json')):
+            copilot_topics.append((path, content))
+        elif '_pad_script.robin' in path_lower:
+            desktop_flows.append((path, content))
         elif 'workflows' in path_lower and path_lower.endswith('.json') and 'connectionreferences' not in path_lower:
             cloud_flows.append((path, content))
         elif 'workflows' in path_lower and path_lower.endswith('.xaml'):
@@ -1374,12 +1615,8 @@ def _separate_critical_files(prioritized_files: List[tuple]) -> tuple:
         else:
             non_critical_files.append((path, content))
     
-    # Order: Canvas screens → Dataverse formulas → Cloud flows → Classic workflows
-    # Canvas screens give the most insight about business logic.
-    # Dataverse formulas define server-side computed columns.
-    # Cloud flows contain automation logic.
-    # Classic workflows/business rules are supplementary automation.
-    critical_files = canvas_files + dataverse_formulas + dataverse_xaml + cloud_flows + classic_workflows
+    # Order: Canvas screens → Dataverse formulas → Copilot topics → Desktop flows → Cloud flows → Classic workflows
+    critical_files = canvas_files + dataverse_formulas + dataverse_xaml + copilot_topics + desktop_flows + cloud_flows + classic_workflows
     
     return critical_files, non_critical_files
 
@@ -1456,7 +1693,30 @@ def _create_file_summary(path: str, content: str) -> str:
         elif path_lower.endswith('.xml'):
             if 'solution' in path_lower:
                 return "Solution manifest"
+            elif 'botcomponent' in path_lower:
+                return "Bot component metadata"
+            elif 'bot.xml' in path_lower:
+                return "Copilot agent configuration"
+            elif 'desktopflowbinary' in path_lower:
+                return "Desktop flow binary metadata"
+            elif 'environmentvariabledefinition' in path_lower:
+                return "Environment variable definition"
             return "XML configuration"
+        
+        # PAD scripts
+        elif '_pad_script.robin' in path_lower:
+            lines = content.split('\n')
+            return f"Desktop flow PAD script ({len(lines)} lines)"
+        
+        # Copilot topic YAML data
+        elif 'botcomponents/' in path_lower and path_lower.endswith('/data'):
+            if '.gpt.' in path_lower:
+                return "Copilot GPT/AI configuration and instructions"
+            elif '.topic.' in path_lower:
+                return "Copilot topic Adaptive Dialog (YAML)"
+            elif '.action.' in path_lower:
+                return "Copilot action/connector definition"
+            return "Bot component data"
         
         # Image/Asset files
         elif any(ext in path_lower for ext in ['.png', '.jpg', '.jpeg', '.gif', '.svg']):
@@ -1532,6 +1792,13 @@ async def generate_documentation(
                 for formula_file in formulas_dir.iterdir():
                     if formula_file.suffix in ('.yaml', '.xaml'):
                         files_to_analyze.append(str(formula_file.relative_to(extract_dir)))
+            
+            # Find Copilot Studio agents (bots/ folder)
+            bots_dir = extract_dir / "bots"
+            if bots_dir.exists():
+                for bot_dir in bots_dir.iterdir():
+                    if bot_dir.is_dir():
+                        files_to_analyze.append(str(bot_dir.relative_to(extract_dir)))
         else:
             logger.info(f"Filtering to {len(selected_components)} selected components")
             
@@ -1581,6 +1848,13 @@ async def generate_documentation(
                         if formula_file.exists():
                             files_to_analyze.append(str(formula_file.relative_to(extract_dir)))
                             logger.info(f"Matched Formula: {sel} -> {selected_filename}")
+                
+                # Process Copilot Studio agents (bots/ folder)
+                elif normalized_sel.startswith("bots/"):
+                    bot_dir = extract_dir / normalized_sel
+                    if bot_dir.exists() and bot_dir.is_dir():
+                        files_to_analyze.append(normalized_sel)
+                        logger.info(f"Matched Copilot Agent: {sel} -> {normalized_sel}")
         
         logger.info(f"Found {len(files_to_analyze)} files/folders to analyze after filtering")
         
@@ -1589,12 +1863,20 @@ async def generate_documentation(
             logger.warning(f"No components matched the selection: {selected_components}")
             logger.warning("This might happen if Canvas Apps weren't unpacked yet or paths don't match")
         
+        # Build workflow map once for desktop flow content extraction
+        workflow_map = _parse_customizations_workflow_map(extract_dir)
+        
         # Read actual file contents
         file_contents = {}
         for file_path_str in files_to_analyze:
             full_path = extract_dir / file_path_str
             try:
-                if full_path.is_dir():
+                if full_path.is_dir() and file_path_str.startswith("bots/"):
+                    # Copilot Studio agent — collect all related files
+                    agent_files = _collect_copilot_agent_files(extract_dir, file_path_str)
+                    file_contents.update(agent_files)
+                    logger.info(f"Collected {len(agent_files)} files for Copilot agent {file_path_str}")
+                elif full_path.is_dir():
                     # For Canvas Apps (_src folders), read key files
                     manifest_path = full_path / "CanvasManifest.json"
                     if manifest_path.exists():
@@ -1621,6 +1903,23 @@ async def generate_documentation(
                 else:
                     # For workflow JSON files, read directly
                     file_contents[file_path_str] = full_path.read_text(encoding='utf-8')
+                    
+                    # For desktop flows: also extract PAD script from customizations.xml
+                    if file_path_str.startswith("Workflows/") and file_path_str.endswith(".json"):
+                        json_fname = Path(file_path_str).name
+                        wf_meta = workflow_map.get(json_fname)
+                        if wf_meta and wf_meta.get("category") == 6:
+                            wf_id = wf_meta.get("workflow_id", "")
+                            if wf_id:
+                                pad_script = _extract_desktop_flow_definition(extract_dir, wf_id)
+                                if pad_script:
+                                    pad_key = file_path_str.replace(".json", "_PAD_Script.robin")
+                                    file_contents[pad_key] = pad_script
+                                    logger.info(f"Extracted PAD script for desktop flow {wf_meta.get('name', wf_id)}: {len(pad_script)} chars")
+                                # Also extract metadata
+                                extra_meta = _extract_desktop_flow_metadata(extract_dir, wf_id)
+                                for tag, text in extra_meta.items():
+                                    file_contents[file_path_str.replace(".json", f"_{tag}.json")] = text
             except Exception as e:
                 logger.warning(f"Could not read {file_path_str}: {e}")
         
@@ -1658,23 +1957,41 @@ async def generate_documentation(
             
             # Categorize selections for better clarity
             canvas_apps = [c for c in selected_components if c.endswith('.msapp')]
-            workflows = [c for c in selected_components if c.startswith('Workflows/') and c.endswith('.json')]
+            workflows = [c for c in selected_components if c.startswith('Workflows/') and c.endswith('.json') and not c.startswith('bots/')]
             classic_wfs = [c for c in selected_components if c.startswith('Workflows/') and c.endswith('.xaml')]
             dv_formulas = [c for c in selected_components if c.startswith('Formulas/')]
+            copilot_agents = [c for c in selected_components if c.startswith('bots/')]
+            
+            # Separate desktop flows from cloud flows using workflow map
+            desktop_flows = []
+            cloud_flows = []
+            for wf in workflows:
+                json_fname = Path(wf).name
+                wf_meta = workflow_map.get(json_fname)
+                if wf_meta and wf_meta.get("category") == 6:
+                    desktop_flows.append(wf)
+                else:
+                    cloud_flows.append(wf)
             
             component_summary = []
             if canvas_apps:
                 app_word = "Canvas App" if len(canvas_apps) == 1 else "Canvas Apps"
                 component_summary.append(f"{len(canvas_apps)} {app_word}")
-            if workflows:
-                flow_word = "Power Automate Flow" if len(workflows) == 1 else "Power Automate Flows"
-                component_summary.append(f"{len(workflows)} {flow_word}")
+            if cloud_flows:
+                flow_word = "Power Automate Flow" if len(cloud_flows) == 1 else "Power Automate Flows"
+                component_summary.append(f"{len(cloud_flows)} {flow_word}")
+            if desktop_flows:
+                df_word = "Desktop Flow" if len(desktop_flows) == 1 else "Desktop Flows"
+                component_summary.append(f"{len(desktop_flows)} {df_word}")
             if classic_wfs:
                 cw_word = "Classic Workflow/Business Rule" if len(classic_wfs) == 1 else "Classic Workflows/Business Rules"
                 component_summary.append(f"{len(classic_wfs)} {cw_word}")
             if dv_formulas:
                 df_word = "Dataverse Formula Definition" if len(dv_formulas) == 1 else "Dataverse Formula Definitions"
                 component_summary.append(f"{len(dv_formulas)} {df_word}")
+            if copilot_agents:
+                ca_word = "Copilot Studio Agent" if len(copilot_agents) == 1 else "Copilot Studio Agents"
+                component_summary.append(f"{len(copilot_agents)} {ca_word}")
             
             summary_text = " and ".join(component_summary) if component_summary else f"{component_count} {component_word}"
             
@@ -1895,6 +2212,11 @@ async def generate_qa_test_scripts(
                 for formula_file in formulas_dir.iterdir():
                     if formula_file.suffix in ('.yaml', '.xaml'):
                         files_to_analyze.append(str(formula_file.relative_to(extract_dir)))
+            bots_dir = extract_dir / "bots"
+            if bots_dir.exists():
+                for bot_dir in bots_dir.iterdir():
+                    if bot_dir.is_dir():
+                        files_to_analyze.append(str(bot_dir.relative_to(extract_dir)))
         else:
             for sel in selected_components:
                 normalized_sel = sel.replace('\\', '/')
@@ -1925,13 +2247,21 @@ async def generate_qa_test_scripts(
                         formula_file = formulas_dir / selected_filename
                         if formula_file.exists():
                             files_to_analyze.append(str(formula_file.relative_to(extract_dir)))
+                elif normalized_sel.startswith("bots/"):
+                    bot_dir = extract_dir / normalized_sel
+                    if bot_dir.exists() and bot_dir.is_dir():
+                        files_to_analyze.append(normalized_sel)
 
         # Read file contents
+        workflow_map = _parse_customizations_workflow_map(extract_dir)
         file_contents = {}
         for file_path_str in files_to_analyze:
             full_path = extract_dir / file_path_str
             try:
-                if full_path.is_dir():
+                if full_path.is_dir() and file_path_str.startswith("bots/"):
+                    agent_files = _collect_copilot_agent_files(extract_dir, file_path_str)
+                    file_contents.update(agent_files)
+                elif full_path.is_dir():
                     manifest_path = full_path / "CanvasManifest.json"
                     if manifest_path.exists():
                         file_contents[f"{file_path_str}/CanvasManifest.json"] = manifest_path.read_text(encoding='utf-8')
@@ -1950,6 +2280,19 @@ async def generate_qa_test_scripts(
                             file_contents[str(rel_path)] = es_file.read_text(encoding='utf-8')
                 else:
                     file_contents[file_path_str] = full_path.read_text(encoding='utf-8')
+                    # Desktop flows: extract PAD script
+                    if file_path_str.startswith("Workflows/") and file_path_str.endswith(".json"):
+                        json_fname = Path(file_path_str).name
+                        wf_meta = workflow_map.get(json_fname)
+                        if wf_meta and wf_meta.get("category") == 6:
+                            wf_id = wf_meta.get("workflow_id", "")
+                            if wf_id:
+                                pad_script = _extract_desktop_flow_definition(extract_dir, wf_id)
+                                if pad_script:
+                                    file_contents[file_path_str.replace(".json", "_PAD_Script.robin")] = pad_script
+                                extra_meta = _extract_desktop_flow_metadata(extract_dir, wf_id)
+                                for tag, text in extra_meta.items():
+                                    file_contents[file_path_str.replace(".json", f"_{tag}.json")] = text
             except Exception as e:
                 logger.warning(f"Could not read {file_path_str}: {e}")
 
@@ -1975,15 +2318,18 @@ async def generate_qa_test_scripts(
             workflows = [c for c in selected_components if c.startswith('Workflows/') and c.endswith('.json')]
             classic_wfs = [c for c in selected_components if c.startswith('Workflows/') and c.endswith('.xaml')]
             dv_formulas = [c for c in selected_components if c.startswith('Formulas/')]
+            copilot_agents = [c for c in selected_components if c.startswith('bots/')]
             component_summary = []
             if canvas_apps:
                 component_summary.append(f"{len(canvas_apps)} Canvas App{'s' if len(canvas_apps) > 1 else ''}")
             if workflows:
-                component_summary.append(f"{len(workflows)} Power Automate Flow{'s' if len(workflows) > 1 else ''}")
+                component_summary.append(f"{len(workflows)} Flow{'s' if len(workflows) > 1 else ''}")
             if classic_wfs:
                 component_summary.append(f"{len(classic_wfs)} Classic Workflow{'s' if len(classic_wfs) > 1 else ''}")
             if dv_formulas:
                 component_summary.append(f"{len(dv_formulas)} Dataverse Formula{'s' if len(dv_formulas) > 1 else ''}")
+            if copilot_agents:
+                component_summary.append(f"{len(copilot_agents)} Copilot Agent{'s' if len(copilot_agents) > 1 else ''}")
             summary_text = " and ".join(component_summary) if component_summary else f"{component_count} {component_word}"
             selection_context = f"""
 ⚠️ IMPORTANT - SCOPE LIMITATION:
