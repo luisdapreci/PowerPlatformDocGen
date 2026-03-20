@@ -62,6 +62,16 @@ DOC_GEN_SECTION_TIMEOUT = 360  # 6 minutes per documentation section (section-by
 DOC_GEN_FINAL_PASS_TIMEOUT = 480  # 8 minutes for the final formatting/gap-filling pass (explores files, fills many sections)
 DOC_GEN_CONSOLIDATION_TIMEOUT = 600  # 10 minutes for final consolidation (deprecated - now using section-by-section)
 
+# Quick mode timeouts (shorter for faster generation)
+DOC_GEN_QUICK_FILE_TIMEOUT = 240      # 4 minutes per file batch (quick mode)
+DOC_GEN_QUICK_SCREENSHOT_TIMEOUT = 180 # 3 minutes per screenshot (quick mode)
+DOC_GEN_QUICK_SECTION_TIMEOUT = 240    # 4 minutes per merged section (quick mode)
+
+# Quick mode file batching
+QUICK_MODE_BATCH_MAX_CHARS = 12000  # Max combined content length for a file batch
+QUICK_MODE_BATCH_MAX_FILES = 3      # Max files per batch
+QUICK_MODE_SINGLE_FILE_THRESHOLD = 8000  # Files larger than this are not batched
+
 # Custom tools configuration
 COPILOT_ENABLE_CUSTOM_TOOLS = True
 

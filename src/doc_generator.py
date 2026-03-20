@@ -46,7 +46,8 @@ class DocumentationGenerator:
         template_path: Path,
         selection_context: str = "",
         business_context: str = "",
-        screenshots: Optional[List[Dict[str, Any]]] = None
+        screenshots: Optional[List[Dict[str, Any]]] = None,
+        generation_mode: str = "comprehensive"
     ) -> str:
         """
         [NEW METHOD - Incremental template editing approach]
@@ -65,6 +66,7 @@ class DocumentationGenerator:
                          'path' (file path), 'context' (user description),
                          'component_path' (associated component or None),
                          'mime_type'
+            generation_mode: 'quick' for faster concise output, 'comprehensive' for full detailed output
             
         Returns:
             Path to generated documentation file (in working directory)
@@ -72,20 +74,40 @@ class DocumentationGenerator:
         if not self.client:
             raise RuntimeError("DocumentationGenerator not initialized")
         
+        is_quick = generation_mode == "quick"
+        logger.info(f"Documentation generation mode: {generation_mode}")
+        
         # Calculate total screenshot passes (computed after grouping below)
         num_screenshots = len(screenshots) if screenshots else 0
         
         # Define documentation sections for dedicated per-section passes
-        doc_sections = [
-            ("frontmatter", "Frontmatter & Project Info"),
-            ("overview", "Project Overview"),
-            ("technical_specs", "Technical Specifications"),
-            ("development", "Development Details"),
-            ("usage", "Usage Instructions"),
-            ("maintenance", "Troubleshooting, Maintenance & Roadmap"),
-            ("appendices", "Appendices & Table of Contents"),
-        ]
-        total_steps = len(critical_files) + num_screenshots + len(doc_sections)
+        # Quick mode: merge into 3 passes for speed; Comprehensive: 7 detailed passes
+        if is_quick:
+            doc_sections = [
+                ("intro", "Frontmatter, Overview & Technical Specs"),
+                ("development_usage", "Development Details & Usage Instructions"),
+                ("closing", "Maintenance, Roadmap, Appendices & TOC"),
+            ]
+        else:
+            doc_sections = [
+                ("frontmatter", "Frontmatter & Project Info"),
+                ("overview", "Project Overview"),
+                ("technical_specs", "Technical Specifications"),
+                ("development", "Development Details"),
+                ("usage", "Usage Instructions"),
+                ("maintenance", "Troubleshooting, Maintenance & Roadmap"),
+                ("appendices", "Appendices & Table of Contents"),
+            ]
+        
+        # Quick mode: batch small files together to reduce round-trips  
+        if is_quick:
+            file_batches = self._batch_files_for_quick_mode(critical_files)
+            total_file_steps = len(file_batches)
+        else:
+            file_batches = [[(path, content)] for path, content in critical_files]
+            total_file_steps = len(critical_files)
+        
+        total_steps = total_file_steps + num_screenshots + len(doc_sections)
         
         try:
             self._update_progress(
@@ -126,13 +148,14 @@ class DocumentationGenerator:
                     "mode": "append",
                     "content": self._build_incremental_system_prompt(
                         str(doc_file),
-                        screenshots=screenshots
+                        screenshots=screenshots,
+                        generation_mode=generation_mode
                     )
                 }
             }
             
             temp_session = await self.client.create_session(session_config)
-            logger.info(f"Created incremental editing session for {session_id}")
+            logger.info(f"Created incremental editing session for {session_id} (mode={generation_mode})")
             
             # Build context sections
             business_section = ""
@@ -156,39 +179,51 @@ class DocumentationGenerator:
             current_step = 0
             screenshot_step = 0
             
-            # PASS 1: Analyze each file and directly edit relevant template sections
-            for idx, (path, content) in enumerate(critical_files, 1):
+            # Select timeouts based on generation mode
+            file_timeout = config.DOC_GEN_QUICK_FILE_TIMEOUT if is_quick else config.DOC_GEN_FILE_TIMEOUT
+            screenshot_timeout = config.DOC_GEN_QUICK_SCREENSHOT_TIMEOUT if is_quick else config.DOC_GEN_SCREENSHOT_TIMEOUT
+            section_timeout = config.DOC_GEN_QUICK_SECTION_TIMEOUT if is_quick else config.DOC_GEN_SECTION_TIMEOUT
+            
+            # PASS 1: Analyze files and directly edit relevant template sections
+            # In quick mode, files may be batched (multiple files per AI call)
+            for batch_idx, batch in enumerate(file_batches, 1):
                 try:
                     current_step += 1
+                    batch_names = ", ".join(Path(p).name for p, _ in batch)
                     self._update_progress(
                         session_id,
                         "analyzing",
                         current_step,
                         total_steps,
-                        f"Analyzing and updating doc with: {Path(path).name}"
+                        f"Analyzing and updating doc with: {batch_names}"
                     )
                     
-                    logger.info(f"Pass {idx}/{len(critical_files)}: Analyzing {path} and editing template...")
+                    logger.info(f"Pass {batch_idx}/{len(file_batches)}: Analyzing {batch_names} (batch of {len(batch)})...")
                     
                     # Snapshot doc before this pass
                     _before_lines = doc_file.read_text(encoding='utf-8').splitlines()
                     
-                    prompt = self._build_incremental_file_prompt(
-                        path,
-                        content,
-                        idx,
-                        len(critical_files),
-                        str(doc_file),
-                        selection_context,
-                        business_section
-                    )
+                    if len(batch) == 1:
+                        # Single file — use standard prompt
+                        path, content = batch[0]
+                        prompt = self._build_incremental_file_prompt(
+                            path, content, batch_idx, len(file_batches),
+                            str(doc_file), selection_context, business_section,
+                            generation_mode=generation_mode
+                        )
+                    else:
+                        # Batched files (quick mode) — use batched prompt
+                        prompt = self._build_batched_file_prompt(
+                            batch, batch_idx, len(file_batches),
+                            str(doc_file), selection_context, business_section
+                        )
                     
                     # Send prompt (no screenshot attachments — screenshots get their own passes)
                     send_payload = {"prompt": prompt}
                     
                     result = await temp_session.send_and_wait(
                         send_payload,
-                        timeout=config.DOC_GEN_FILE_TIMEOUT
+                        timeout=file_timeout
                     )
                     
                     # Compute line diff after pass
@@ -196,82 +231,84 @@ class DocumentationGenerator:
                     _added = max(0, len(_after_lines) - len(_before_lines))
                     _removed = max(0, len(_before_lines) - len(_after_lines))
                     _changed = sum(1 for a, b in zip(_before_lines, _after_lines) if a != b)
-                    logger.info(f"✓ Pass {idx} complete: +{_added} -{_removed} lines, {_changed} lines changed")
+                    logger.info(f"✓ Pass {batch_idx} complete: +{_added} -{_removed} lines, {_changed} lines changed")
                     self._update_progress(
                         session_id, "analyzing", current_step, total_steps,
-                        f"✓ {Path(path).name}",
+                        f"✓ {batch_names}",
                         diff={"added": _added, "removed": _removed, "changed": _changed}
                     )
                 
                 except asyncio.TimeoutError:
-                    logger.error(f"Timeout analyzing {path}")
+                    logger.error(f"Timeout analyzing batch {batch_idx}: {batch_names}")
                 except Exception as e:
-                    logger.error(f"Error analyzing {path}: {e}")
+                    logger.error(f"Error analyzing batch {batch_idx}: {e}")
                 
-                # SCREENSHOT PASSES: After each component file, process its assigned screenshots
-                file_screenshots = []
-                norm_path = path.replace('\\', '/')
-                for comp_path, ss_list in screenshots_by_component.items():
-                    norm_comp = comp_path.replace('\\', '/')
-                    if norm_comp in norm_path or norm_path in norm_comp:
-                        file_screenshots.extend(ss_list)
-                    elif Path(comp_path).stem in norm_path:
-                        file_screenshots.extend(ss_list)
-                
-                for ss in file_screenshots:
-                    screenshot_step += 1
-                    current_step += 1
-                    # Find this screenshot's index in the full list
-                    ss_index = next((i for i, s in enumerate(screenshots, 1) if s.get('path') == ss.get('path')), screenshot_step)
+                # SCREENSHOT PASSES: After each file batch, process screenshots assigned to any file in the batch
+                for path, _ in batch:
+                    file_screenshots = []
+                    norm_path = path.replace('\\', '/')
+                    for comp_path, ss_list in screenshots_by_component.items():
+                        norm_comp = comp_path.replace('\\', '/')
+                        if norm_comp in norm_path or norm_path in norm_comp:
+                            file_screenshots.extend(ss_list)
+                        elif Path(comp_path).stem in norm_path:
+                            file_screenshots.extend(ss_list)
                     
-                    self._update_progress(
-                        session_id,
-                        "screenshot_analysis",
-                        current_step,
-                        total_steps,
-                        f"Analyzing screenshot {screenshot_step}/{num_screenshots}: {ss.get('context', 'screenshot')[:50]}"
-                    )
-                    
-                    logger.info(f"Screenshot pass {screenshot_step}/{num_screenshots}: {ss.get('context', 'No context')[:60]}")
-                    
-                    ss_prompt = self._build_screenshot_pass_prompt(
-                        screenshot=ss,
-                        screenshot_index=ss_index,
-                        total_screenshots=num_screenshots,
-                        doc_file_path=str(doc_file),
-                        component_context=path
-                    )
-                    
-                    _ss_before = doc_file.read_text(encoding='utf-8')
-                    try:
-                        ss_result = await temp_session.send_and_wait(
-                            {
-                                "prompt": ss_prompt,
-                                "attachments": [{"type": "file", "path": ss.get('ai_path', ss['path'])}]
-                            },
-                            timeout=config.DOC_GEN_SCREENSHOT_TIMEOUT
+                    for ss in file_screenshots:
+                        screenshot_step += 1
+                        current_step += 1
+                        # Find this screenshot's index in the full list
+                        ss_index = next((i for i, s in enumerate(screenshots, 1) if s.get('path') == ss.get('path')), screenshot_step)
+                        
+                        self._update_progress(
+                            session_id,
+                            "screenshot_analysis",
+                            current_step,
+                            total_steps,
+                            f"Analyzing screenshot {screenshot_step}/{num_screenshots}: {ss.get('context', 'screenshot')[:50]}"
                         )
-                        _ss_after = doc_file.read_text(encoding='utf-8')
-                        if _ss_after != _ss_before:
-                            _before_lines = _ss_before.splitlines()
-                            _after_lines = _ss_after.splitlines()
-                            _added = max(0, len(_after_lines) - len(_before_lines))
-                            _removed = max(0, len(_before_lines) - len(_after_lines))
-                            _changed = sum(1 for a, b in zip(_before_lines, _after_lines) if a != b)
-                            logger.info(f"✓ Pass {idx} screenshot {screenshot_step} complete: +{_added} -{_removed} lines, {_changed} lines changed")
-                            logger.info(f"✓ Screenshot pass {screenshot_step} complete: +{_added} -{_removed} lines, {_changed} lines changed")
-                        else:
-                            logger.warning(f"Screenshot pass {screenshot_step}: no file edits detected, applying fallback embed")
-                            _ss_text = ""
-                            if ss_result and hasattr(ss_result, 'data') and hasattr(ss_result.data, 'content'):
-                                _ss_text = ss_result.data.content or ""
-                            self._fallback_embed_screenshot(doc_file, ss, ss_index, _ss_text)
-                    except asyncio.TimeoutError:
-                        logger.error(f"Timeout on screenshot pass {screenshot_step}")
-                        self._fallback_embed_screenshot(doc_file, ss, ss_index)
-                    except Exception as e:
-                        logger.error(f"Error on screenshot pass {screenshot_step}: {e}")
-                        self._fallback_embed_screenshot(doc_file, ss, ss_index)
+                        
+                        logger.info(f"Screenshot pass {screenshot_step}/{num_screenshots}: {ss.get('context', 'No context')[:60]}")
+                        
+                        ss_prompt = self._build_screenshot_pass_prompt(
+                            screenshot=ss,
+                            screenshot_index=ss_index,
+                            total_screenshots=num_screenshots,
+                            doc_file_path=str(doc_file),
+                            component_context=path,
+                            generation_mode=generation_mode
+                        )
+                        
+                        _ss_before = doc_file.read_text(encoding='utf-8')
+                        try:
+                            ss_result = await temp_session.send_and_wait(
+                                {
+                                    "prompt": ss_prompt,
+                                    "attachments": [{"type": "file", "path": ss.get('ai_path', ss['path'])}]
+                                },
+                                timeout=screenshot_timeout
+                            )
+                            _ss_after = doc_file.read_text(encoding='utf-8')
+                            if _ss_after != _ss_before:
+                                _before_lines = _ss_before.splitlines()
+                                _after_lines = _ss_after.splitlines()
+                                _added = max(0, len(_after_lines) - len(_before_lines))
+                                _removed = max(0, len(_before_lines) - len(_after_lines))
+                                _changed = sum(1 for a, b in zip(_before_lines, _after_lines) if a != b)
+                                logger.info(f"✓ Pass {batch_idx} screenshot {screenshot_step} complete: +{_added} -{_removed} lines, {_changed} lines changed")
+                                logger.info(f"✓ Screenshot pass {screenshot_step} complete: +{_added} -{_removed} lines, {_changed} lines changed")
+                            else:
+                                logger.warning(f"Screenshot pass {screenshot_step}: no file edits detected, applying fallback embed")
+                                _ss_text = ""
+                                if ss_result and hasattr(ss_result, 'data') and hasattr(ss_result.data, 'content'):
+                                    _ss_text = ss_result.data.content or ""
+                                self._fallback_embed_screenshot(doc_file, ss, ss_index, _ss_text)
+                        except asyncio.TimeoutError:
+                            logger.error(f"Timeout on screenshot pass {screenshot_step}")
+                            self._fallback_embed_screenshot(doc_file, ss, ss_index)
+                        except Exception as e:
+                            logger.error(f"Error on screenshot pass {screenshot_step}: {e}")
+                            self._fallback_embed_screenshot(doc_file, ss, ss_index)
             
             # GLOBAL SCREENSHOT PASSES: Process screenshots not tied to any component
             for ss in global_screenshots:
@@ -293,7 +330,8 @@ class DocumentationGenerator:
                     screenshot=ss,
                     screenshot_index=ss_index,
                     total_screenshots=num_screenshots,
-                    doc_file_path=str(doc_file)
+                    doc_file_path=str(doc_file),
+                    generation_mode=generation_mode
                 )
                 
                 _ss_before = doc_file.read_text(encoding='utf-8')
@@ -303,7 +341,7 @@ class DocumentationGenerator:
                             "prompt": ss_prompt,
                             "attachments": [{"type": "file", "path": ss.get('ai_path', ss['path'])}]
                         },
-                        timeout=config.DOC_GEN_SCREENSHOT_TIMEOUT
+                        timeout=screenshot_timeout
                     )
                     _ss_after = doc_file.read_text(encoding='utf-8')
                     if _ss_after != _ss_before:
@@ -327,7 +365,7 @@ class DocumentationGenerator:
                     self._fallback_embed_screenshot(doc_file, ss, ss_index)
             
             # SECTION-BY-SECTION PASSES: Dedicated pass for each documentation section
-            logger.info(f"Starting {len(doc_sections)} dedicated section passes...")
+            logger.info(f"Starting {len(doc_sections)} {'merged' if is_quick else 'dedicated'} section passes...")
             
             for sec_idx, (section_id, section_name) in enumerate(doc_sections, 1):
                 try:
@@ -355,11 +393,12 @@ class DocumentationGenerator:
                         critical_files=critical_files,
                         non_critical_files=non_critical_files,
                         working_directory=working_directory,
+                        generation_mode=generation_mode,
                     )
                     
                     result = await temp_session.send_and_wait(
                         {"prompt": section_prompt},
-                        timeout=config.DOC_GEN_SECTION_TIMEOUT
+                        timeout=section_timeout
                     )
                     
                     # Compute line diff after section pass
@@ -560,7 +599,8 @@ Do not just embed images — describe what you see in them to create thorough do
         screenshot_index: int,
         total_screenshots: int,
         doc_file_path: str,
-        component_context: str = ""
+        component_context: str = "",
+        generation_mode: str = "comprehensive"
     ) -> str:
         """Build prompt for a dedicated single-screenshot analysis pass.
         
@@ -569,6 +609,7 @@ Do not just embed images — describe what you see in them to create thorough do
         2. Writes documentation based on what it sees
         3. Inserts the image reference in the most relevant location
         """
+        is_quick = generation_mode == "quick"
         context = screenshot.get('context', 'No context provided')
         comp = screenshot.get('component_path', 'Global')
         
@@ -650,7 +691,7 @@ Read additional ranges as needed to see the full content of the target section b
 ---
 
 [TOOL] **YOUR TASK:**
-
+{"⚡ QUICK MODE: Write a 1-sentence caption describing what this screenshot shows. Embed the image in the most relevant section. Do NOT write detailed visual analysis or multi-paragraph descriptions." if is_quick else ""}
 1. **Read** the current documentation file to find and read the full text of the best target section.
    Read additional line ranges until you have seen all existing content in that section.
 
@@ -1002,8 +1043,27 @@ Analyze the provided Power Platform components and generate clear, well-organize
 
 Be thorough but concise. Focus on business logic and important technical details."""
     
-    def _build_incremental_system_prompt(self, doc_file_path: str, screenshots: Optional[List[Dict[str, Any]]] = None) -> str:
+    def _build_incremental_system_prompt(self, doc_file_path: str, screenshots: Optional[List[Dict[str, Any]]] = None, generation_mode: str = "comprehensive") -> str:
         """Build system prompt for incremental template editing approach"""
+        
+        is_quick = generation_mode == "quick"
+        
+        quick_mode_block = ""
+        if is_quick:
+            quick_mode_block = """
+
+**⚡ QUICK MODE — CONCISE WRITING RULES:**
+You are in QUICK MODE. Write concisely and efficiently:
+- Use bullet points, not paragraphs. 1-2 sentences per component max.
+- List only: component name, purpose, key formula/trigger. Skip minor controls and decorative elements.
+- For data sources: name + type + operations only (no detailed auth/config descriptions).
+- For screens: name + purpose + 2-3 key controls (skip layout prose and design details).
+- For flows: name + trigger + high-level action summary (skip step-by-step walkthroughs).
+- For maintenance/roadmap/troubleshooting: use standard placeholder text if no specific data exists.
+- No glossary entries for common Power Platform terms (Power Fx, Canvas App, Dataverse, etc.).
+- Prefer `multi_replace_string_in_file` to make all edits in one call when possible.
+- Do NOT write detailed descriptions, extended explanations, or multi-paragraph prose.
+"""
         return f"""[!] CRITICAL: This is a FILE EDITING task, not a conversation.
 
 YOU MUST USE TOOLS TO EDIT THE FILE. DO NOT WRITE TEXT RESPONSES.
@@ -1097,9 +1157,93 @@ For each file you analyze:
 - Build documentation incrementally, file by file
 
 {self._build_screenshot_system_instructions(screenshots)}
-
+{quick_mode_block}
 Be precise with edits. Use the tools to actually modify the documentation file."""
-    
+
+    def _batch_files_for_quick_mode(self, critical_files: List[tuple]) -> List[List[tuple]]:
+        """Group small files into batches for quick mode to reduce AI round-trips.
+        
+        Files larger than QUICK_MODE_SINGLE_FILE_THRESHOLD are kept as solo batches.
+        Remaining files are grouped by type until QUICK_MODE_BATCH_MAX_CHARS or 
+        QUICK_MODE_BATCH_MAX_FILES is reached.
+        """
+        solo = []
+        small_files = []
+        
+        for path, content in critical_files:
+            if len(content) > config.QUICK_MODE_SINGLE_FILE_THRESHOLD:
+                solo.append([(path, content)])
+            else:
+                small_files.append((path, content))
+        
+        # Group small files into batches
+        batches = list(solo)
+        current_batch = []
+        current_chars = 0
+        
+        for path, content in small_files:
+            file_len = len(content)
+            would_exceed_chars = (current_chars + file_len) > config.QUICK_MODE_BATCH_MAX_CHARS
+            would_exceed_files = len(current_batch) >= config.QUICK_MODE_BATCH_MAX_FILES
+            
+            if current_batch and (would_exceed_chars or would_exceed_files):
+                batches.append(current_batch)
+                current_batch = []
+                current_chars = 0
+            
+            current_batch.append((path, content))
+            current_chars += file_len
+        
+        if current_batch:
+            batches.append(current_batch)
+        
+        logger.info(f"Quick mode batching: {len(critical_files)} files -> {len(batches)} batches")
+        return batches
+
+    def _build_batched_file_prompt(
+        self,
+        files: List[tuple],
+        batch_idx: int,
+        total_batches: int,
+        doc_file_path: str,
+        selection_context: str,
+        business_context: str
+    ) -> str:
+        """Build prompt for analyzing multiple files at once in quick mode."""
+        
+        files_block = ""
+        for i, (path, content) in enumerate(files, 1):
+            excerpt = content[:6000] + ("..." if len(content) > 6000 else "")
+            files_block += f"\n**--- File {i}: `{path}` ---**\n```\n{excerpt}\n```\n"
+        
+        return f"""[!] CRITICAL INSTRUCTION: USE TOOLS TO EDIT THE FILE NOW — QUICK MODE BATCH
+
+⚡ This is QUICK MODE. Analyze ALL {len(files)} files below and update the documentation in ONE pass.
+Use bullet points only. Name + purpose + key formula per component. Skip minor details.
+
+YOUR FIRST ACTION: read_file(filePath="{doc_file_path}", startLine=1, endLine=100)
+Then use multi_replace_string_in_file to make ALL edits at once.
+
+---
+
+[TARGET] BATCH FILE ANALYSIS (Batch {batch_idx} of {total_batches} — {len(files)} files)
+
+{selection_context}
+{business_context if business_context else ''}
+[FILE] **DOCUMENTATION FILE TO EDIT:** `{doc_file_path}`
+
+{files_block}
+
+---
+
+**YOUR TASK:**
+1. Read the documentation file
+2. For EACH file above, extract: component names, key formulas, data sources, flow triggers
+3. Use multi_replace_string_in_file to add all findings to the appropriate sections
+4. Keep entries concise: name + purpose + primary formula/trigger only
+
+BEGIN WITH TOOL CALLS IMMEDIATELY."""
+
     def _build_incremental_file_prompt(
         self,
         path: str,
@@ -1108,9 +1252,12 @@ Be precise with edits. Use the tools to actually modify the documentation file."
         total: int,
         doc_file_path: str,
         selection_context: str,
-        business_context: str
+        business_context: str,
+        generation_mode: str = "comprehensive"
     ) -> str:
         """Build prompt for incremental file analysis with direct template editing"""
+        
+        is_quick = generation_mode == "quick"
         
         # Determine file type and likely relevant sections
         path_lower = path.lower()
@@ -1176,6 +1323,46 @@ This is the **Solution Manifest** with the solution's unique name, version, and 
 - `### 2.1 Platform Overview` (publisher, solution metadata)
 """
         
+        # Build the examples/quick-mode block outside the f-string to avoid nesting issues
+        if is_quick:
+            examples_block = """⚡ QUICK MODE: Use ONE multi_replace_string_in_file call to make all edits at once. Keep entries short — name + purpose + key formula only. No detailed code blocks unless the formula is central to business logic."""
+        else:
+            examples_block = f"""**Example Tool Usage:**
+
+If analyzing a screen with formulas:
+
+```
+# Step 1: Read current state
+read_file(filePath="{doc_file_path}", startLine=100, endLine=150)
+
+# Step 2: Check what's already there
+grep_search(query="### 3.4 Logic and Automation", isRegexp=false)
+
+# Step 3: Replace placeholder with actual content
+replace_string_in_file(
+    filePath="{doc_file_path}",
+    oldString=\'\'\'### 3.4 Logic and Automation
+
+**Formulas:**
+[Placeholder]\'\'\',
+    newString=\'\'\'### 3.4 Logic and Automation
+
+**Formulas:**
+- **HomeScreen.Gallery1.Items:**
+  SortByColumns(Filter(Orders, Status = "Active"), "Date", Descending)
+  Purpose: Display active orders sorted by date\'\'\')
+```"""
+        
+        quick_task_prefix = ""
+        if is_quick:
+            quick_task_prefix = """⚡ QUICK MODE: Extract key info only. For each component list: name, purpose, and primary formula/trigger.
+Skip minor controls, decorative elements, and detailed descriptions. Use bullet points only.
+"""
+        
+        # Content truncation: shorter in quick mode
+        max_content = 8000 if is_quick else 15000
+        content_excerpt = content[:max_content] + ("..." if len(content) > max_content else "")
+        
         return f"""[!] CRITICAL INSTRUCTION: USE TOOLS TO EDIT THE FILE NOW
 
 This is NOT a conversation. DO NOT write explanatory text.
@@ -1197,15 +1384,14 @@ After reading, immediately use replace_string_in_file to edit relevant sections.
 [TARGET] INCREMENTAL DOCUMENTATION UPDATE (File {idx} of {total})
 
 {selection_context}
-{business_context}
-
+{business_context if business_context else ''}
 [FILE] **DOCUMENTATION FILE TO EDIT:** `{doc_file_path}`
 
 [FOLDER] **FILE TO ANALYZE:**
 **Path:** `{path}`
 
 ```
-{content[:15000]}{"..." if len(content) > 15000 else ""}
+{content_excerpt}
 ```
 
 {relevant_sections_hint}
@@ -1213,7 +1399,7 @@ After reading, immediately use replace_string_in_file to edit relevant sections.
 ---
 
 [TOOL] **YOUR TASK:**
-
+{quick_task_prefix}
 1. **Read** the current documentation file: `{doc_file_path}`
 
 2. **Analyze** the file content above and extract:
@@ -1257,66 +1443,7 @@ After reading, immediately use replace_string_in_file to edit relevant sections.
 
 ---
 
-**Example Tool Usage:**
-
-If analyzing a screen with formulas:
-
-```
-# Step 1: Read current state
-read_file(filePath="{doc_file_path}", startLine=100, endLine=150)
-
-# Step 2: Check what's already there
-grep_search(query="### 3.4 Logic and Automation", isRegexp=false)
-
-# Step 3: Replace placeholder with actual content
-replace_string_in_file(
-    filePath="{doc_file_path}",
-    oldString='''### 3.4 Logic and Automation
-
-**Formulas:**
-[Placeholder]''',
-    newString='''### 3.4 Logic and Automation
-
-**Formulas:**
-- **HomeScreen.Gallery1.Items:**
-  ```
-  SortByColumns(Filter(Orders, Status = "Active"), "Date", Descending)
-  ```
-  Purpose: Display active orders sorted by date'''
-)
-```
-
-Or to append to an existing list:
-
-```
-# Read first to see what's there
-read_file(filePath="{doc_file_path}", startLine=200, endLine=220)
-
-# Then append
-replace_string_in_file(
-    filePath="{doc_file_path}",
-    oldString='''- **HomeScreen.Gallery1.Items:**
-  ```
-  SortByColumns(Filter(Orders, Status = "Active"), "Date", Descending)
-  ```
-  Purpose: Display active orders sorted by date
-
----''',
-    newString='''- **HomeScreen.Gallery1.Items:**
-  ```
-  SortByColumns(Filter(Orders, Status = "Active"), "Date", Descending)
-  ```
-  Purpose: Display active orders sorted by date
-  
-- **DetailScreen.SaveBtn.OnSelect:**
-  ```
-  SubmitForm(OrderForm); Navigate(HomeScreen, Fade)
-  ```
-  Purpose: Save order and return to home
-
----'''
-)
-```
+{examples_block}
 
 ---
 
@@ -1419,8 +1546,7 @@ After reading, use replace_string_in_file to fill frontmatter, generate overview
 [TARGET] FINAL DOCUMENTATION POLISH
 
 {selection_context}
-{business_context}
-
+{business_context if business_context else ''}
 [FILE] **DOCUMENTATION FILE:** `{doc_file_path}`
 
 You've just analyzed {files_analyzed} Power Platform files and incrementally updated the documentation.
@@ -1524,12 +1650,15 @@ BEGIN WITH TOOL CALLS IMMEDIATELY - NO CONVERSATIONAL TEXT."""
         critical_files: List[tuple],
         non_critical_files: List[tuple],
         working_directory: Path,
+        generation_mode: str = "comprehensive",
     ) -> str:
         """Build a focused prompt for editing one specific documentation section."""
         
+        is_quick = generation_mode == "quick"
+        
         # Build file inventory (only for sections that benefit from exploration)
         files_inventory = ""
-        if section_id in ("technical_specs", "development", "overview"):
+        if section_id in ("technical_specs", "development", "overview", "intro", "development_usage"):
             files_inventory = self._build_files_inventory(
                 critical_files, non_critical_files, working_directory
             )
@@ -1544,9 +1673,9 @@ Edit the top of `{doc_file_path}` to fill in:
 3. **Last Updated** — today's date
 4. **Author(s)** — "Auto-generated Documentation"
 5. **Status** — "Documented"
-6. **Purpose** — synthesize a 1-2 sentence purpose from components analyzed and business context
+6. **Purpose** — synthesize a 1-2 sentence purpose from components analyzed{' AND the business context below' if business_section else ''}
 
-Read the file first to find manifest/app data already written by earlier passes.
+{business_section + chr(10) if business_section else ''}Read the file first to find manifest/app data already written by earlier passes.
 Only edit the `## Project Information` block — do NOT touch other sections.""",
 
             "overview": f"""[TARGET] **SECTION 1: Project Overview**
@@ -1564,10 +1693,7 @@ Edit `{doc_file_path}` to fill Section 1 — Project Overview:
    - **Scope:** Count screens, flows, data sources from what's in the doc
    - **Target Audience:** If identifiable, otherwise "End users"
    - **Stakeholders:** If identifiable, otherwise placeholder
-
-{business_section}
-
-Only edit Section 1 — do NOT touch other sections.""",
+{(chr(10) + business_section + chr(10)) if business_section else chr(10)}Only edit Section 1 — do NOT touch other sections.""",
 
             "technical_specs": f"""[TARGET] **SECTION 2: Technical Specifications (2.1, 2.2, 2.3)**
 
@@ -1609,14 +1735,13 @@ Only edit Section 3 — do NOT touch other sections.""",
             "usage": f"""[TARGET] **SECTION 4: Usage Instructions**
 
 Edit `{doc_file_path}` to fill Section 4 — Usage Instructions:
-
-1. **Read the current doc** to understand what screens/features exist
+{(chr(10) + business_section + chr(10)) if business_section else chr(10)}1. **Read the current doc** to understand what screens/features exist
 2. Fill these subsections:
    - **4.1 How to Access the App:** URL or access method, device compatibility
-   - **4.2 Features:** List 3-5 key features based on documented screens and flows
-   - **4.3 User Roles:** Role-based permissions if identifiable, otherwise standard placeholder
+   - **4.2 Features:** List 3-5 key features based on documented screens and flows.{chr(10) + '     Use the business context above to describe features from the user perspective and explain their business value.' if business_section else ''}
+   - **4.3 User Roles:** Role-based permissions if identifiable from code{' or business context' if business_section else ''}, otherwise standard placeholder.{chr(10) + '     If business context mentions specific departments or roles, incorporate them here.' if business_section else ''}
 
-Base feature descriptions on the screens and logic already documented in Section 3.
+Base feature descriptions on the screens and logic already documented in Section 3{', enriched with business context' if business_section else ''}.
 
 Only edit Section 4 — do NOT touch other sections.""",
 
@@ -1678,16 +1803,81 @@ Table of Contents in the `## Table of Contents` section with markdown links:
 Edit Sections 8, Table of Contents, and do final cleanup only.""",
         }
         
-        instruction = section_instructions.get(section_id, f"Complete the {section_name} section of the documentation.")
+        # Quick mode: merged section instructions (3 passes instead of 7)
+        quick_section_instructions = {
+            "intro": f"""[TARGET] **MERGED SECTION: Frontmatter + Overview + Technical Specs** (⚡ Quick Mode)
+
+Edit `{doc_file_path}` to fill Sections 0-2 in ONE pass. Be concise:
+
+1. **Project Information block:** Fill project name (from manifest data in doc), version, today's date, "Auto-generated", purpose in 1 sentence.
+{business_section + chr(10) if business_section else ''}
+2. **Section 1 — Project Overview:** Write 1 short paragraph summarizing what the app does. List 3 bullet-point objectives max. Count screens/flows/data sources for Scope. Keep it brief.
+
+3. **Section 2 — Technical Specifications:**
+   - 2.1: App type + environment in 1-2 bullets
+   - 2.2: List data sources as a simple table (Name | Type | Operations). Use what's already in doc — skip file exploration.
+   - 2.3: Technology stack in 2-3 bullets
+
+{files_inventory}
+
+Only edit Sections 0-2. Keep everything short and factual.""",
+
+            "development_usage": f"""[TARGET] **MERGED SECTION: Development Details + Usage Instructions** (⚡ Quick Mode)
+
+Edit `{doc_file_path}` to fill Sections 3-4 in ONE pass. Be concise:
+{(chr(10) + business_section + chr(10)) if business_section else chr(10)}
+1. **Section 3 — Development Details:**
+   - 3.1: Setup requirements in 2-3 bullets
+   - 3.2: Data connections — summarize as bullet list (already documented by file passes)
+   - 3.3: Screens as a bullet list: name + purpose (already documented by file passes — just clean up)
+   - 3.4: Formulas/flows — ensure entries from file passes are clean, de-duplicate if needed
+   - Do NOT add new content — just polish what file passes already wrote
+
+2. **Section 4 — Usage Instructions:**
+   - 4.1: Access method in 1-2 sentences
+   - 4.2: List 3-5 key features as bullets based on documented screens/flows{'. Use business context for user perspective.' if business_section else ''}
+   - 4.3: User roles — 2-3 bullets if identifiable, otherwise standard placeholder
+
+{files_inventory}
+
+Only edit Sections 3-4. Keep entries short — bullet points only.""",
+
+            "closing": f"""[TARGET] **MERGED SECTION: Maintenance + Appendices + TOC** (⚡ Quick Mode)
+
+Edit `{doc_file_path}` to fill Sections 5-8 and TOC in ONE pass:
+
+1. **Sections 5-7** (Troubleshooting, Maintenance, Roadmap):
+   - Replace template placeholders with brief standard text
+   - If no specific data exists from file analysis, use: "*Standard recommendations apply. Refer to Power Platform Admin Center.*"
+   - Keep each subsection to 1-2 lines max
+
+2. **Section 8 — Appendices:**
+   - 8.1 Glossary: Only add domain-specific terms found in the doc (skip common Power Platform terms)
+   - 8.2 Screenshots: Leave as-is if screenshots were embedded earlier
+   - 8.3 Custom Components: Brief list or "*None identified*"
+
+3. **Table of Contents:** Generate TOC with markdown links based on actual section headers present.
+
+4. **Final cleanup:** Replace any remaining raw template instructions with "*Not available*". Remove duplicates.
+
+Edit Sections 5-8 and TOC only.""",
+        }
+        
+        if is_quick:
+            instruction = quick_section_instructions.get(section_id, f"Complete the {section_name} section concisely.")
+        else:
+            instruction = section_instructions.get(section_id, f"Complete the {section_name} section of the documentation.")
+        
+        quick_mode_header = "\n⚡ QUICK MODE — Be concise. Bullet points only. No multi-paragraph prose." if is_quick else ""
         
         return f"""[!] CRITICAL: SECTION EDITING TASK — USE TOOLS ONLY
-
+{quick_mode_header}
 DO NOT write text. USE read_file and replace_string_in_file to edit `{doc_file_path}`.
 
 ---
 
 {selection_context}
-
+{business_section + chr(10) if business_section else ''}
 **DOCUMENTATION FILE:** `{doc_file_path}`
 **You have analyzed {files_analyzed} files in previous passes.**
 
@@ -1704,7 +1894,7 @@ DO NOT write text. USE read_file and replace_string_in_file to edit `{doc_file_p
 - Use replace_string_in_file for precise edits
 - Include 3-5 lines of context in oldString for accurate matching
 - Preserve content from other sections
-
+{'- Incorporate business context (provided above) when describing component purposes and business value' + chr(10) if business_section else ''}
 [STOP] **DON'T:**
 - Don't write conversational text — only use tools
 - Don't edit sections outside your assigned scope
@@ -3022,11 +3212,8 @@ read_file(filePath="{doc_file_path}", startLine=1, endLine=200)
 ---
 
 [TARGET] **BULK POPULATION — Fill the entire User Guide template**
-
-{business_section}
-{images_hint}
-
-**DOCUMENTATION FILE TO EDIT:** `{doc_file_path}`
+{(chr(10) + business_section) if business_section else ''}
+{images_hint + chr(10) if images_hint else ''}**DOCUMENTATION FILE TO EDIT:** `{doc_file_path}`
 
 **YOUR TASK:**
 
@@ -3193,8 +3380,7 @@ DO NOT write text. USE read_file and replace_string_in_file to edit `{doc_file_p
 
 ---
 
-{business_section}
-
+{business_section + chr(10) if business_section else ''}
 **USER GUIDE FILE:** `{doc_file_path}`
 
 ---
@@ -3254,7 +3440,8 @@ BEGIN WITH TOOL USAGE IMMEDIATELY."""
         template_path: Path,
         selection_context: str = "",
         business_context: str = "",
-        screenshots: Optional[List[Dict[str, Any]]] = None
+        screenshots: Optional[List[Dict[str, Any]]] = None,
+        generation_mode: str = "comprehensive"
     ) -> str:
         """
         Generate QA test scripts by incrementally editing the TestScriptsTemplate.
@@ -3263,18 +3450,29 @@ BEGIN WITH TOOL USAGE IMMEDIATELY."""
         if not self.client:
             raise RuntimeError("DocumentationGenerator not initialized")
 
+        is_quick = generation_mode == "quick"
+        logger.info(f"QA test scripts generation mode: {generation_mode}")
+
         num_screenshots = len(screenshots) if screenshots else 0
 
-        qa_sections = [
-            ("test_plan_info", "Test Plan Information"),
-            ("test_environment", "Test Environment & Data"),
-            ("canvas_tests", "Canvas App Test Scenarios"),
-            ("flow_tests", "Power Automate Flow Test Scenarios"),
-            ("integration_tests", "Integration Test Scenarios"),
-            ("edge_boundary", "Edge Case & Boundary Tests"),
-            ("perf_security_a11y", "Performance, Security & Accessibility"),
-            ("regression_checklist", "Regression Checklist & Cleanup"),
-        ]
+        # Quick mode: merge 8 QA sections into 3 for speed
+        if is_quick:
+            qa_sections = [
+                ("test_plan_environment", "Test Plan Info & Environment Setup"),
+                ("functional_tests", "Canvas, Flow & Integration Test Scenarios"),
+                ("quality_checklist", "Edge Cases, Performance, Security & Regression"),
+            ]
+        else:
+            qa_sections = [
+                ("test_plan_info", "Test Plan Information"),
+                ("test_environment", "Test Environment & Data"),
+                ("canvas_tests", "Canvas App Test Scenarios"),
+                ("flow_tests", "Power Automate Flow Test Scenarios"),
+                ("integration_tests", "Integration Test Scenarios"),
+                ("edge_boundary", "Edge Case & Boundary Tests"),
+                ("perf_security_a11y", "Performance, Security & Accessibility"),
+                ("regression_checklist", "Regression Checklist & Cleanup"),
+            ]
         total_steps = len(critical_files) + num_screenshots + len(qa_sections)
 
         try:
@@ -3324,8 +3522,11 @@ BEGIN WITH TOOL USAGE IMMEDIATELY."""
 
             current_step = 0
             screenshot_step = 0
-
-            # PASS 1: Analyze each file and extract test scenarios
+            
+            # Select timeouts based on generation mode
+            file_timeout = config.DOC_GEN_QUICK_FILE_TIMEOUT if is_quick else config.DOC_GEN_FILE_TIMEOUT
+            screenshot_timeout = config.DOC_GEN_QUICK_SCREENSHOT_TIMEOUT if is_quick else config.DOC_GEN_SCREENSHOT_TIMEOUT
+            section_timeout = config.DOC_GEN_QUICK_SECTION_TIMEOUT if is_quick else config.DOC_GEN_SECTION_TIMEOUT
             for idx, (path, content) in enumerate(critical_files, 1):
                 try:
                     current_step += 1
@@ -3343,7 +3544,7 @@ BEGIN WITH TOOL USAGE IMMEDIATELY."""
 
                     await temp_session.send_and_wait(
                         {"prompt": prompt},
-                        timeout=config.DOC_GEN_FILE_TIMEOUT
+                        timeout=file_timeout
                     )
 
                     _after_lines = doc_file.read_text(encoding='utf-8').splitlines()
@@ -3382,12 +3583,13 @@ BEGIN WITH TOOL USAGE IMMEDIATELY."""
                     ss_prompt = self._build_screenshot_pass_prompt(
                         screenshot=ss, screenshot_index=ss_index,
                         total_screenshots=num_screenshots,
-                        doc_file_path=str(doc_file), component_context=path
+                        doc_file_path=str(doc_file), component_context=path,
+                        generation_mode=generation_mode
                     )
                     try:
                         await temp_session.send_and_wait(
                             {"prompt": ss_prompt, "attachments": [{"type": "file", "path": ss.get('ai_path', ss['path'])}]},
-                            timeout=config.DOC_GEN_SCREENSHOT_TIMEOUT
+                            timeout=screenshot_timeout
                         )
                     except Exception as e:
                         logger.error(f"Error on QA screenshot pass {screenshot_step}: {e}")
@@ -3403,12 +3605,13 @@ BEGIN WITH TOOL USAGE IMMEDIATELY."""
                 )
                 ss_prompt = self._build_screenshot_pass_prompt(
                     screenshot=ss, screenshot_index=ss_index,
-                    total_screenshots=num_screenshots, doc_file_path=str(doc_file)
+                    total_screenshots=num_screenshots, doc_file_path=str(doc_file),
+                    generation_mode=generation_mode
                 )
                 try:
                     await temp_session.send_and_wait(
                         {"prompt": ss_prompt, "attachments": [{"type": "file", "path": ss.get('ai_path', ss['path'])}]},
-                        timeout=config.DOC_GEN_SCREENSHOT_TIMEOUT
+                        timeout=screenshot_timeout
                     )
                 except Exception as e:
                     logger.error(f"Error on QA global screenshot pass {screenshot_step}: {e}")
@@ -3434,7 +3637,7 @@ BEGIN WITH TOOL USAGE IMMEDIATELY."""
                     )
                     await temp_session.send_and_wait(
                         {"prompt": section_prompt},
-                        timeout=config.DOC_GEN_SECTION_TIMEOUT
+                        timeout=section_timeout
                     )
 
                     _after_lines = doc_file.read_text(encoding='utf-8').splitlines()
@@ -3634,8 +3837,7 @@ After reading, immediately use replace_string_in_file to edit relevant sections.
 [TARGET] QA TEST SCENARIO EXTRACTION (File {idx} of {total})
 
 {selection_context}
-{business_context}
-
+{business_context if business_context else ''}
 [FILE] **TEST SCRIPTS FILE TO EDIT:** `{doc_file_path}`
 
 [FOLDER] **SOURCE FILE TO ANALYZE:**
@@ -3711,7 +3913,7 @@ Edit the top of `{doc_file_path}` to fill in:
 3. **Date** — today's date
 4. **Prepared By** — "Auto-generated QA Test Scripts"
 5. **Test Environment** — "Sandbox" (default recommendation for testing)
-6. **Test Scope** — synthesize from the components analyzed
+6. **Test Scope** — synthesize from the components analyzed{' and the business context provided. Include the business purpose and key workflows that need to be validated' if business_section else ''}
 
 Only edit the `## Test Plan Information` block.""",
 
@@ -3737,8 +3939,8 @@ Only edit Sections 1-2.""",
 
             "canvas_tests": f"""[TARGET] **SECTION 3: Canvas App Test Scenarios**
 
-Edit `{doc_file_path}` to complete Section 3 with specific, actionable test cases:
-
+Edit `{doc_file_path}` to complete Section 3 with specific, actionable test cases.
+{'Use business context to prioritize tests that cover core business workflows and user-facing functionality.' + chr(10) if business_section else ''}
 1. **Read the doc** to see what test scenarios were extracted from file analysis passes
 2. **Fill gaps and enhance** the subsections:
    - **3.1 Screen Navigation Tests:** Ensure all screens have navigation test cases
@@ -3759,8 +3961,8 @@ Only edit Section 3.""",
 
             "flow_tests": f"""[TARGET] **SECTION 4: Power Automate Flow Test Scenarios**
 
-Edit `{doc_file_path}` to complete Section 4 with specific flow test cases:
-
+Edit `{doc_file_path}` to complete Section 4 with specific flow test cases.
+{'Use business context to understand which flows are business-critical and should have the most thorough test coverage.' + chr(10) if business_section else ''}
 1. **Read the doc** to see what test scenarios exist from file analysis passes
 2. **Fill gaps and enhance:**
    - **4.1 Flow Trigger Tests:** For each flow:
@@ -3782,8 +3984,8 @@ Only edit Section 4.""",
 
             "integration_tests": f"""[TARGET] **SECTION 5: Integration Test Scenarios**
 
-Edit `{doc_file_path}` to fill Section 5 — Integration Tests:
-
+Edit `{doc_file_path}` to fill Section 5 — Integration Tests.
+{'Use business context to identify the end-to-end business processes that span multiple components.' + chr(10) if business_section else ''}
 1. **Read the doc** to understand what Canvas Apps and flows exist
 2. **Identify cross-component interactions:**
    - Canvas App triggering a Power Automate flow (via PowerAutomate.Run or button)
@@ -3884,7 +4086,7 @@ DO NOT write text. USE read_file and replace_string_in_file to edit `{doc_file_p
 ---
 
 {selection_context}
-
+{business_section + chr(10) if business_section else ''}
 **TEST SCRIPTS FILE:** `{doc_file_path}`
 **You have analyzed {files_analyzed} files in previous passes.**
 
@@ -3901,7 +4103,7 @@ DO NOT write text. USE read_file and replace_string_in_file to edit `{doc_file_p
 - Use replace_string_in_file for precise edits
 - Include 3-5 lines of context in oldString for accurate matching
 - Generate SPECIFIC test cases with actual component/formula names from the analysis
-- Preserve content from other sections
+{'- Use the business context above to prioritize test scenarios and write test cases that reflect real business workflows' + chr(10) if business_section else ''}- Preserve content from other sections
 
 [STOP] **DON'T:**
 - Don't write conversational text — only use tools

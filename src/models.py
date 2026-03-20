@@ -115,6 +115,7 @@ class GenerateDocsRequest(BaseModel):
     solution_name: Optional[str] = None
     project_description: Optional[str] = None
     business_context: Optional[str] = Field(None, description="Optional business context to guide documentation generation")
+    generation_mode: str = Field("comprehensive", description="Generation mode: 'quick' for faster concise output, 'comprehensive' for full detailed output")
 
 
 class ScreenshotMetadata(BaseModel):

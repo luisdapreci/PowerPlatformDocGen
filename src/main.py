@@ -1733,12 +1733,20 @@ def _create_file_summary(path: str, content: str) -> str:
 @app.post("/generate-docs/{session_id}", response_model=DocumentationFiles)
 async def generate_documentation(
     session_id: str, 
-    business_context: Optional[str] = Body(None, embed=True)
+    business_context: Optional[str] = Body(None, embed=True),
+    generation_mode: Optional[str] = Body("comprehensive", embed=True)
 ):
     """
     Generate documentation using dedicated doc generator (isolated from chat session)
+    
+    generation_mode: 'quick' for faster concise output, 'comprehensive' for full detailed output (default)
     """
     try:
+        # Validate generation mode
+        if generation_mode not in ("quick", "comprehensive"):
+            generation_mode = "comprehensive"
+        logger.info(f"Generation mode: {generation_mode}")
+        
         # Extract business context if provided
         if business_context:
             business_context = business_context.strip()
@@ -2062,7 +2070,8 @@ All components in the solution are included for documentation.
                 template_path=template_path,  # Pass path instead of content
                 selection_context=selection_context,
                 business_context=business_context or "",
-                screenshots=screenshot_data if screenshot_data else None
+                screenshots=screenshot_data if screenshot_data else None,
+                generation_mode=generation_mode
             )
             
             logger.info(f"✓ Documentation generation complete: {len(copilot_documentation)} characters")
@@ -2169,13 +2178,20 @@ All components in the solution are included for documentation.
 @app.post("/generate-qa/{session_id}", response_model=DocumentationFiles)
 async def generate_qa_test_scripts(
     session_id: str,
-    business_context: Optional[str] = Body(None, embed=True)
+    business_context: Optional[str] = Body(None, embed=True),
+    generation_mode: Optional[str] = Body("comprehensive", embed=True)
 ):
     """
     Generate QA test scripts for selected components.
     Produces one document: TestScripts.md.
+    
+    generation_mode: 'quick' for faster concise output, 'comprehensive' for full detailed output (default)
     """
     try:
+        if generation_mode not in ("quick", "comprehensive"):
+            generation_mode = "comprehensive"
+        logger.info(f"QA generation mode: {generation_mode}")
+        
         if business_context:
             business_context = business_context.strip()
             logger.info(f"QA business context provided: {business_context[:100]}...")
@@ -2395,7 +2411,8 @@ The user has selected {summary_text} for QA analysis:
                 template_path=test_scripts_template,
                 selection_context=selection_context,
                 business_context=business_context or "",
-                screenshots=screenshot_data if screenshot_data else None
+                screenshots=screenshot_data if screenshot_data else None,
+                generation_mode=generation_mode
             )
 
             # Post-process screenshots for test scripts
