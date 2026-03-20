@@ -1302,15 +1302,15 @@
                     <h3 style="margin-top: 0; color: #166534; font-size: 1.1rem;">⚙️ Generation Mode</h3>
                     <div style="display: flex; gap: 15px; margin-top: 12px; flex-wrap: wrap;">
                         <label style="flex: 1; min-width: 200px; cursor: pointer;">
-                            <input type="radio" name="genMode" value="comprehensive" checked onchange="onGenModeChange()" style="display: none;">
-                            <div id="genModeCardComprehensive" style="border: 2px solid #667eea; border-radius: 8px; padding: 15px; background: #f0f0ff; transition: all 0.2s;">
+                            <input type="radio" name="genMode" value="comprehensive" onchange="onGenModeChange()" style="display: none;">
+                            <div id="genModeCardComprehensive" style="border: 2px solid #dee2e6; border-radius: 8px; padding: 15px; background: #fff; transition: all 0.2s;">
                                 <strong style="color: #333; font-size: 1rem;">📋 Comprehensive</strong>
                                 <p style="color: #666; font-size: 0.85rem; margin: 8px 0 0 0;">Full detailed documentation with extended descriptions, code blocks, and thorough analysis. Best quality.</p>
                             </div>
                         </label>
                         <label style="flex: 1; min-width: 200px; cursor: pointer;">
-                            <input type="radio" name="genMode" value="quick" onchange="onGenModeChange()" style="display: none;">
-                            <div id="genModeCardQuick" style="border: 2px solid #dee2e6; border-radius: 8px; padding: 15px; background: #fff; transition: all 0.2s;">
+                            <input type="radio" name="genMode" value="quick" checked onchange="onGenModeChange()" style="display: none;">
+                            <div id="genModeCardQuick" style="border: 2px solid #16a34a; border-radius: 8px; padding: 15px; background: #f0fdf4; transition: all 0.2s;">
                                 <strong style="color: #333; font-size: 1rem;">⚡ Quick</strong>
                                 <p style="color: #666; font-size: 0.85rem; margin: 8px 0 0 0;">Faster generation with concise bullet-point documentation. Same structure, less prose. ~50% faster.</p>
                             </div>
@@ -1368,7 +1368,9 @@
 
                 <div class="button-group">
                     <button class="btn btn-secondary" onclick="startOver()">Start Over</button>
-                    <div></div>
+                    <button class="btn btn-primary" onclick="regenerateWithSameData()" style="background-color: #667eea; border-color: #667eea;">
+                        🔄 Generate Again
+                    </button>
                 </div>
             </div>
         </div>
@@ -1435,7 +1437,7 @@
         let pendingScreenshots = []; // {file, context, componentPath}
         let appScreens = []; // [{path, display_name, type, app_path}] — populated after unpack
         let selectedDocType = 'technical'; // 'technical' or 'qa'
-        let selectedGenMode = 'comprehensive'; // 'comprehensive' or 'quick'
+        let selectedGenMode = 'quick'; // 'comprehensive' or 'quick'
 
         // Clean up session on page close/refresh.
         // navigator.sendBeacon (POST) is the most reliable on unload; fetch+keepalive is the fallback.
@@ -1792,6 +1794,18 @@
             document.querySelector(`.step-item[data-step="${step}"]`).classList.add('active');
             
             currentStep = step;
+
+            // Reset step 2 selection state when going back to step 1
+            if (step === 1) {
+                selectedComponents = [];
+                document.getElementById('selectAllCheckbox').checked = false;
+                document.querySelectorAll('.component-checkbox').forEach(cb => {
+                    cb.checked = false;
+                    const item = cb.closest('.component-item');
+                    if (item) item.classList.remove('selected');
+                });
+                updateSelectionSummary();
+            }
 
             // Show chat toggle only from step 4 onwards and only when unpacking is done
             if (step >= 4 && unpackingComplete) {
@@ -2873,6 +2887,25 @@
             loadComponents();
         }
 
+        function regenerateWithSameData() {
+            // Go back to Step 4 keeping the same session, components, and screenshots
+            // so the user can adjust options (doc type, gen mode, business context) and regenerate
+            isGenerating = false;
+
+            // Re-enable the generate button
+            const generateBtn = document.getElementById('generateBtn');
+            generateBtn.disabled = false;
+            generateBtn.style.opacity = '1';
+            generateBtn.style.cursor = 'pointer';
+
+            // Reset progress UI
+            document.getElementById('generateStatus').style.display = 'none';
+            document.getElementById('generateProgressPanel').style.display = 'none';
+            document.getElementById('generateSpinner').classList.remove('show');
+
+            goToStep(4);
+        }
+
         function startOver() {
             if (confirm('Start over? This will clear the current session.')) {
                 if (sessionId) {
@@ -2899,9 +2932,9 @@
                 if (techRadio) { techRadio.checked = true; onDocTypeChange(); }
 
                 // Reset generation mode selector
-                selectedGenMode = 'comprehensive';
-                const compRadio = document.querySelector('input[name="genMode"][value="comprehensive"]');
-                if (compRadio) { compRadio.checked = true; onGenModeChange(); }
+                selectedGenMode = 'quick';
+                const quickRadio = document.querySelector('input[name="genMode"][value="quick"]');
+                if (quickRadio) { quickRadio.checked = true; onGenModeChange(); }
 
                 // Reset screenshot UI
                 document.getElementById('screenshotPreviews').innerHTML = '';

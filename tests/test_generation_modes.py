@@ -382,8 +382,8 @@ class TestFrontendWiring:
     def test_generation_mode_radios_exist(self):
         assert 'name="genMode"' in self.html
 
-    def test_comprehensive_radio_checked_by_default(self):
-        assert 'value="comprehensive" checked' in self.html
+    def test_quick_radio_checked_by_default(self):
+        assert 'value="quick" checked' in self.html
 
     def test_quick_radio_exists(self):
         assert 'value="quick"' in self.html
@@ -406,7 +406,7 @@ class TestFrontendWiring:
         assert occurrences >= 2
 
     def test_mode_reset_on_new_session(self):
-        assert "selectedGenMode = 'comprehensive'" in self.html
+        assert "selectedGenMode = 'quick'" in self.html
         assert 'input[name="genMode"]' in self.html
 
 
@@ -502,11 +502,11 @@ def _run_standalone():
     print("\n[Frontend HTML]")
     html = (Path(__file__).parent.parent / "static" / "index.html").read_text(encoding="utf-8")
     check('genMode radios exist', 'name="genMode"' in html)
-    check('Comprehensive checked by default', 'value="comprehensive" checked' in html)
+    check('Quick checked by default', 'value="quick" checked' in html)
     check('selectedGenMode variable declared', "selectedGenMode" in html)
     check('onGenModeChange function exists', "function onGenModeChange()" in html)
     check('generation_mode sent in requests', html.count("generation_mode: selectedGenMode") >= 2)
-    check('Mode reset on new session', "selectedGenMode = 'comprehensive'" in html)
+    check('Mode reset on new session', "selectedGenMode = 'quick'" in html)
 
     # --- API endpoints (requires TestClient) ---
     print("\n[API Endpoints]")
