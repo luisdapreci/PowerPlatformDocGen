@@ -3455,23 +3455,18 @@ BEGIN WITH TOOL USAGE IMMEDIATELY."""
 
         num_screenshots = len(screenshots) if screenshots else 0
 
-        # Quick mode: merge 8 QA sections into 3 for speed
+        # Quick mode: 2 merged passes; Comprehensive: 4 focused passes
         if is_quick:
             qa_sections = [
-                ("test_plan_environment", "Test Plan Info & Environment Setup"),
-                ("functional_tests", "Canvas, Flow & Integration Test Scenarios"),
-                ("quality_checklist", "Edge Cases, Performance, Security & Regression"),
+                ("functional_tests", "Test Plan, Environment, Canvas, Flow & Integration Tests"),
+                ("quality_checklist", "Edge Cases, Performance, Security, Accessibility & Regression"),
             ]
         else:
             qa_sections = [
-                ("test_plan_info", "Test Plan Information"),
-                ("test_environment", "Test Environment & Data"),
+                ("test_plan_environment", "Test Plan, Environment & Data"),
                 ("canvas_tests", "Canvas App Test Scenarios"),
-                ("flow_tests", "Power Automate Flow Test Scenarios"),
-                ("integration_tests", "Integration Test Scenarios"),
-                ("edge_boundary", "Edge Case & Boundary Tests"),
-                ("perf_security_a11y", "Performance, Security & Accessibility"),
-                ("regression_checklist", "Regression Checklist & Cleanup"),
+                ("flow_integration", "Power Automate & Integration Tests"),
+                ("quality_regression", "Quality Assurance & Regression"),
             ]
         total_steps = len(critical_files) + num_screenshots + len(qa_sections)
 
@@ -3681,78 +3676,28 @@ BEGIN WITH TOOL USAGE IMMEDIATELY."""
         screenshots: Optional[List[Dict[str, Any]]] = None
     ) -> str:
         """Build system prompt for QA test scripts generation."""
-        role_desc = "Power Platform QA test engineer"
-        task_desc = (
-            "Write comprehensive QA test scripts including functional tests, "
-            "edge cases, boundary tests, and regression scenarios. "
-            "For Power Fx formulas, generate test cases that cover: happy path, empty/null inputs, "
-            "boundary values, delegation limits, error conditions, and concurrent user scenarios. "
-            "For Power Automate flows, generate test cases that cover: trigger conditions, "
-            "action success/failure paths, connector timeouts, run-after configurations, "
-            "and data transformation validation."
-        )
 
         screenshot_instructions = self._build_screenshot_system_instructions(screenshots) if screenshots else ""
 
-        return f"""[!] CRITICAL: This is a FILE EDITING task, not a conversation.
+        return f"""[!] FILE EDITING TASK — USE TOOLS ONLY. NO TEXT RESPONSES.
 
-YOU MUST USE TOOLS TO EDIT THE FILE. DO NOT WRITE TEXT RESPONSES.
+**FILE:** `{doc_file_path}`
 
-**DOCUMENT FILE:** `{doc_file_path}`
+**ROLE:** Power Platform QA test engineer — incremental file editing.
 
-**PROHIBITED ACTIONS:**
-[X] DO NOT write conversational responses describing what you would do
-[X] DO NOT say "I will analyze..." or "Here's what I found..."
-[X] DO NOT provide summaries or explanations in text
-[X] DO NOT describe tool calls - EXECUTE them
+**TASK:** Generate QA test scripts by editing the file with read_file + replace_string_in_file / multi_replace_string_in_file.
 
-**REQUIRED ACTIONS:**
-[OK] USE read_file to check current state
-[OK] USE replace_string_in_file or multi_replace_string_in_file to ACTUALLY edit the file
-[OK] Make the edits directly - your ONLY output should be tool calls
-[OK] Edit the file immediately upon analyzing each component
+**POWER PLATFORM TEST EXPERTISE:**
+- Power Fx: delegation limits (500/2000 rows), Patch can fail silently, nested ForAll is O(n²), Set vs UpdateContext scoping, concurrent=true race conditions
+- Power Automate JSON: check triggers, run-after error paths, Scope try-catch, HTTP retry policies, Apply_to_each concurrency, null-safe `?` operator
+- Canvas Apps: screens, controls, galleries, forms, data sources
+- Dataverse: row-level security, calculated columns, rollup fields
 
----
-
-**YOUR ROLE:** {role_desc} using INCREMENTAL EDITING
-
-**YOUR TASK:** {task_desc}
-
-1. Read the current state of `{doc_file_path}`
-2. Identify which sections are relevant to the component you're analyzing
-3. USE replace_string_in_file to fill in those sections with actual content
-4. Preserve template structure and existing content
-
-POWER PLATFORM EXPERTISE:
-- **Power Fx**: Low-code formula language in Canvas Apps — KNOW that:
-  * `Filter()`, `Search()`, `LookUp()` on large tables may NOT be delegable depending on the data source
-  * `Collect()` / `ClearCollect()` load data client-side — risky with large datasets
-  * `Patch()` can silently fail without error handling — always check with `IfError()` or `IsError()`
-  * `Set()` creates global variables, `UpdateContext()` creates screen-scoped — prefer scoped
-  * `Navigate()` with `ScreenTransition` can cause flicker or performance issues
-  * Nested `ForAll()` loops can be extremely slow — O(n²) behavior
-  * `concurrent=true` in `OnStart` can cause race conditions if variables depend on each other
-- **Power Automate (JSON format)**: Workflow definitions where:
-  * `"triggers"` section defines when the flow runs — check trigger conditions carefully
-  * `"actions"` are the steps — look for missing `"runAfter"` failure/error paths
-  * Scope actions should wrap risky operations for try-catch error handling
-  * HTTP connectors without retry policies can cause silent failures
-  * `Apply_to_each` loops without concurrency limits default to sequential
-  * Expression syntax: `@{{triggerBody()?['property']}}` — null-safe `?` operator is critical
-  * Connection references in `"$connections"` — check for hardcoded vs environment variables
-- **Canvas Apps**: Custom UI apps with screens and controls
-- **Dataverse**: Microsoft's cloud database for business data
-
-[TOOLS] **AVAILABLE TOOLS:**
-
-- **read_file**: Read current state of the document file
-- **replace_string_in_file**: Replace specific text in the document
-- **multi_replace_string_in_file**: Make multiple edits at once
-- **grep_search**: Find specific sections in the doc
+**TOOLS:** read_file, replace_string_in_file, multi_replace_string_in_file, grep_search
 
 {screenshot_instructions}
 
-Be precise with edits. Use the tools to actually modify the document file."""
+Use tools to edit the file. Never write conversational text."""
 
     def _build_incremental_qa_file_prompt(
         self,
@@ -3769,79 +3714,38 @@ Be precise with edits. Use the tools to actually modify the document file."""
         relevant_sections_hint = ""
 
         if '.fx.yaml' in path_lower:
-            relevant_sections_hint = """
-**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
-- `### 3.2 Power Fx Formula Validation` — create test cases for each formula:
-  * Happy path: normal expected inputs
-  * Empty/null: what happens with blank fields or empty collections?
-  * Boundary values: max length strings, zero values, negative numbers
-  * Delegation: will this query work with >500/2000 records?
-  * Error conditions: what if Patch fails? What if LookUp returns blank?
-- `### 3.1 Screen Navigation Tests` — test navigation between screens
-- `### 3.3 Data Operations (CRUD)` — test Create/Read/Update/Delete operations
-- `### 3.4 UI Control Behavior` — test visibility, enable/disable, conditional formatting
-"""
+            relevant_sections_hint = """**TARGET SECTIONS:** 2.2 (Formula Validation), 2.1 (Navigation), 2.3 (CRUD), 2.4 (UI Controls)
+Test each formula: happy path, empty/null, boundary values, delegation, error conditions."""
         elif 'canvasmanifest' in path_lower:
-            relevant_sections_hint = """
-**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
-- `## Test Plan Information` — extract solution name, version
-- `### 1.1 Prerequisites` — extract required connections, licenses
-- `### 3.1 Screen Navigation Tests` — extract screen list for navigation tests
-"""
+            relevant_sections_hint = """**TARGET SECTIONS:** Test Plan Information, 1.1 (Prerequisites), 2.1 (Navigation)
+Extract solution name, version, connections, screen list."""
         elif 'workflows' in path_lower and path_lower.endswith('.json'):
-            relevant_sections_hint = """
-**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
-This is a **Power Automate flow definition** in JSON format.
-- `### 4.1 Flow Trigger Tests` — test trigger conditions (when does/doesn't it fire?)
-- `### 4.2 Flow Action Validation` — test each action: success, failure, timeout
-- `### 4.3 Flow Error Handling Tests` — check run-after config, test failure paths
-- `### 4.4 Flow Data Transformation Tests` — test expressions, data mapping
-- `## 5. Integration Test Scenarios` — if the flow connects to apps or other flows
-"""
+            relevant_sections_hint = """**TARGET SECTIONS:** 3.1 (Triggers), 3.2 (Actions), 3.3 (Error Handling), 3.4 (Transforms), 3.5 (Integration)
+Test trigger conditions, action success/failure, run-after paths, expressions, connector timeouts."""
         elif 'datasources' in path_lower:
-            relevant_sections_hint = """
-**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
-- `### 1.2 Connections & Credentials` — document required connections
-- `### 2.1 Required Test Data` — derive test data needs from data source schema
-"""
+            relevant_sections_hint = """**TARGET SECTIONS:** 1.2 (Connections), 1.3 (Test Data)
+Document required connections and derive test data needs."""
         elif 'formulas/' in path_lower:
-            relevant_sections_hint = """
-**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
-This is a **Dataverse formula definition**.
-- `### 3.2 Power Fx Formula Validation` — test calculated columns with edge cases
-- `### 6.3 Delegation & Large Dataset Tests` — Dataverse formulas with large tables
-"""
+            relevant_sections_hint = """**TARGET SECTIONS:** 2.2 (Formula Validation), 4.2 (Delegation Tests)
+Test calculated columns with edge cases and large dataset behavior."""
         elif 'workflows' in path_lower and path_lower.endswith('.xaml'):
-            relevant_sections_hint = """
-**LIKELY RELEVANT SECTIONS FOR THIS FILE:**
-This is a **Classic Workflow or Business Rule** in XAML format.
-- `### 4.1 Flow Trigger Tests` — test when the rule fires
-- `### 4.3 Flow Error Handling Tests` — test failure scenarios
-- `## 5. Integration Test Scenarios` — test interaction with other components
-"""
+            relevant_sections_hint = """**TARGET SECTIONS:** 3.1 (Triggers), 3.3 (Error Handling), 3.5 (Integration)
+Test when rule fires, failure scenarios, interactions with other components."""
 
-        return f"""[!] CRITICAL INSTRUCTION: USE TOOLS TO EDIT THE FILE NOW
+        return f"""[!] USE TOOLS TO EDIT `{doc_file_path}` — NO TEXT.
 
-This is NOT a conversation. DO NOT write explanatory text.
-Your ONLY valid response is tool calls: read_file, replace_string_in_file, multi_replace_string_in_file.
+FIRST: read_file(filePath="{doc_file_path}", startLine=1, endLine=100)
+Then: replace_string_in_file / multi_replace_string_in_file to add test cases.
 
 ---
 
-YOUR FIRST ACTION MUST BE:
-read_file(filePath="{doc_file_path}", startLine=1, endLine=100)
-
-After reading, immediately use replace_string_in_file to edit relevant sections.
-
----
-
-[TARGET] QA TEST SCENARIO EXTRACTION (File {idx} of {total})
+QA EXTRACTION — File {idx}/{total}
 
 {selection_context}
 {business_context if business_context else ''}
-[FILE] **TEST SCRIPTS FILE TO EDIT:** `{doc_file_path}`
+**FILE:** `{doc_file_path}`
 
-[FOLDER] **SOURCE FILE TO ANALYZE:**
-**Path:** `{path}`
+**SOURCE:** `{path}`
 
 ```
 {content[:15000]}{"..." if len(content) > 15000 else ""}
@@ -3851,37 +3755,16 @@ After reading, immediately use replace_string_in_file to edit relevant sections.
 
 ---
 
-[TOOL] **YOUR TASK — EXTRACT TEST SCENARIOS:**
+**TASK:** Extract testable behaviors and add test cases to the appropriate tables.
 
-1. **Read** the current test scripts file: `{doc_file_path}`
+- For **Power Fx**: happy path, empty/null, boundary, delegation (>2000 records), failure (Patch/SubmitForm)
+- For **Flows**: trigger fires/doesn't fire, action success/failure/timeout, expressions with nulls, missing fields
+- For **Data sources**: test data needs, connection prerequisites
 
-2. **Analyze** the source file and identify TESTABLE BEHAVIORS:
-   - For **Power Fx (.fx.yaml)**: Each formula is a test target. Ask:
-     * What is the HAPPY PATH? (normal expected behavior)
-     * What happens with EMPTY or NULL inputs?
-     * What are the BOUNDARY values? (max lengths, zero, negatives)
-     * Is this query DELEGABLE? What happens with >2000 records?
-     * What if the data operation FAILS? (Patch, SubmitForm, Remove)
-     * Are there RACE CONDITIONS? (concurrent variable updates)
-   - For **Power Automate flows (.json)**: Each trigger/action is a test target. Ask:
-     * Does the TRIGGER fire correctly? When should it NOT fire?
-     * What if an ACTION fails? Is there error handling?
-     * What if a CONNECTOR times out or is throttled?
-     * Are EXPRESSIONS correct? What about null values in expressions?
-     * What if the input DATA is malformed or missing fields?
-   - For **Data sources**: What test data is needed? What are the constraints?
+Use actual control names, formula text, and flow action names from the source.
+Test IDs: NAV-001, FX-001, TRIG-001, ACT-001, etc. Priority: High (core logic), Medium (secondary), Low (edge).
 
-3. **Edit** the test scripts file to add test cases in proper table format:
-   - Use the Test ID convention: NAV-001, FX-001, TRIG-001, ACT-001, etc.
-   - Include SPECIFIC steps, not generic ones
-   - Include EXACT expected results based on the actual formula/flow logic
-   - Set priority: High for core business logic, Medium for secondary, Low for edge cases
-
-4. **Be SPECIFIC** — reference actual control names, formula text, flow action names from the source code.
-
----
-
-[START] BEGIN WITH TOOL USAGE IMMEDIATELY - NO TEXT RESPONSES."""
+BEGIN WITH TOOL CALLS."""
 
     
     def _build_qa_section_editing_prompt(
@@ -3898,197 +3781,106 @@ After reading, immediately use replace_string_in_file to edit relevant sections.
     ) -> str:
         """Build a focused prompt for editing one specific QA test scripts section."""
         files_inventory = ""
-        if section_id in ("canvas_tests", "flow_tests", "integration_tests", "test_environment"):
+        if section_id in ("canvas_tests", "flow_integration", "test_plan_environment", "functional_tests"):
             files_inventory = self._build_files_inventory(
                 critical_files, non_critical_files, working_directory
             )
 
+        biz_hint = ""
+        if business_section:
+            biz_hint = "Use business context to prioritize tests covering core workflows."
+
         section_instructions = {
-            "test_plan_info": f"""[TARGET] **SECTION: Test Plan Information**
+            # ── Comprehensive mode (4 sections) ──────────────────────
+            "test_plan_environment": f"""**SECTIONS: Test Plan Info + §1 Environment & Data**
 
-Edit the top of `{doc_file_path}` to fill in:
-
-1. **Solution Name** — extract from data already in the doc or metadata
-2. **Version Under Test** — from manifest or "1.0.0"
-3. **Date** — today's date
-4. **Prepared By** — "Auto-generated QA Test Scripts"
-5. **Test Environment** — "Sandbox" (default recommendation for testing)
-6. **Test Scope** — synthesize from the components analyzed{' and the business context provided. Include the business purpose and key workflows that need to be validated' if business_section else ''}
-
-Only edit the `## Test Plan Information` block.""",
-
-            "test_environment": f"""[TARGET] **SECTIONS 1 & 2: Test Environment Setup & Test Data Requirements**
-
-Edit `{doc_file_path}` to fill Sections 1 and 2:
-
-1. **Section 1 — Test Environment Setup:**
-   - **1.1 Prerequisites:** List required licenses, security roles, browsers
-   - **1.2 Connections & Credentials:** List all data connections found in the analyzed files
-     (DO NOT include actual credentials — only types and how to obtain them)
-   - **1.3 Environment Configuration:** Any feature flags or settings needed
-
-2. **Section 2 — Test Data Requirements:**
-   - **2.1 Required Test Data:** Based on data sources and entity references found in the code,
-     list what test data records are needed (entities, field values, record counts)
-   - **2.2 Test Data Setup Steps:** How to prepare the test environment
-   - **2.3 Data Cleanup Procedure:** How to reset after testing
+Fill the header block and Sections 1.1–1.4:
+- Solution Name, Version, Date, Prepared By, Test Environment, Test Scope
+- Prerequisites (licenses, roles, browsers)
+- Connections & Credentials (types only, no secrets)
+- Required Test Data table (entities, record counts, key fields)
+- Data Setup & Cleanup procedures
 
 {files_inventory}
+Only edit Test Plan Information and Section 1.""",
 
-Only edit Sections 1-2.""",
+            "canvas_tests": f"""**SECTION 2: Canvas App Test Scenarios**
 
-            "canvas_tests": f"""[TARGET] **SECTION 3: Canvas App Test Scenarios**
-
-Edit `{doc_file_path}` to complete Section 3 with specific, actionable test cases.
-{'Use business context to prioritize tests that cover core business workflows and user-facing functionality.' + chr(10) if business_section else ''}
-1. **Read the doc** to see what test scenarios were extracted from file analysis passes
-2. **Fill gaps and enhance** the subsections:
-   - **3.1 Screen Navigation Tests:** Ensure all screens have navigation test cases
-   - **3.2 Power Fx Formula Validation:** For EVERY significant formula:
-     * Generate happy path test case
-     * Generate empty/null input test case
-     * Generate boundary value test case (if applicable)
-     * Generate error condition test case (if the formula does data operations)
-     * Generate delegation test case (if the formula uses Filter/Search/LookUp)
-   - **3.3 Data Operations (CRUD):** Test every Patch, SubmitForm, Remove, Collect operation
-   - **3.4 UI Control Behavior:** Test visibility conditions, enable/disable, conditional formatting
-3. **De-duplicate** test cases and ensure proper Test ID numbering
-4. **Assign priorities:** High = core business logic, Medium = secondary features, Low = cosmetic/edge cases
+{biz_hint}
+Complete subsections 2.1–2.4:
+- 2.1 Navigation: all screens have nav test cases
+- 2.2 Formulas: for each significant formula → happy path, empty/null, boundary, delegation, error
+- 2.3 CRUD: test every Patch, SubmitForm, Remove, Collect
+- 2.4 UI Controls: visibility conditions, enable/disable, conditional formatting
+De-duplicate, number Test IDs sequentially, set priorities (High/Medium/Low).
 
 {files_inventory}
+Only edit Section 2.""",
 
+            "flow_integration": f"""**SECTIONS 3: Power Automate & Integration Tests**
+
+{biz_hint}
+Complete subsections 3.1–3.5:
+- 3.1 Triggers: valid fire, invalid no-fire, scheduled timing
+- 3.2 Actions: success, invalid data, connector timeout
+- 3.3 Error Handling: Scope try-catch gaps, run-after configs, connector failures
+- 3.4 Transforms: expression logic, data mapping validation
+- 3.5 Integration: end-to-end Canvas→Flow→data→Canvas chains, multi-flow sequences
+Include specific flow/action names from the analysis.
+
+{files_inventory}
 Only edit Section 3.""",
 
-            "flow_tests": f"""[TARGET] **SECTION 4: Power Automate Flow Test Scenarios**
+            "quality_regression": f"""**SECTIONS 4–5: Quality Assurance & Regression**
 
-Edit `{doc_file_path}` to complete Section 4 with specific flow test cases.
-{'Use business context to understand which flows are business-critical and should have the most thorough test coverage.' + chr(10) if business_section else ''}
-1. **Read the doc** to see what test scenarios exist from file analysis passes
-2. **Fill gaps and enhance:**
-   - **4.1 Flow Trigger Tests:** For each flow:
-     * Test that the trigger fires with valid conditions
-     * Test that the trigger does NOT fire with invalid conditions
-     * Test scheduled triggers with correct timing
-   - **4.2 Flow Action Validation:** For each significant action:
-     * Test successful execution with valid data
-     * Test with invalid/missing input data
-     * Test connector timeout scenarios
-   - **4.3 Flow Error Handling Tests:** For each flow:
-     * Does the flow have Scope-based try-catch? If not, note this as a gap
-     * Test what happens when each connector fails
-     * Verify run-after configurations work correctly
-   - **4.4 Flow Data Transformation Tests:** Test expression logic and data mapping
-3. **Be SPECIFIC** about which flow action to test and what data to use
+Complete Section 4 (all subsections) and Section 5:
+- 4.1 Boundary: empty/null, max length, special chars, zero/negative, date edge cases
+- 4.2 Delegation: identify non-delegable queries, test with 500+ / 2000+ records
+- 4.3 Timing: offline, session timeout, concurrent edits, browser back button
+- 4.4 Performance: app load <5s, gallery rendering, flow execution time, concurrency
+- 4.5 Security: correct role access, denied access, URL manipulation, cross-role data visibility
+- 4.6 Accessibility: keyboard nav, screen reader, color contrast, error identification (WCAG 2.1)
+- Section 5 Regression: top 10–15 critical scenarios with Test ID references
+- Generate Table of Contents, replace remaining placeholders with content or "N/A"
+- Ensure sequential Test IDs with no gaps
 
-Only edit Section 4.""",
+Only edit Sections 4–5, TOC, and final cleanup.""",
 
-            "integration_tests": f"""[TARGET] **SECTION 5: Integration Test Scenarios**
+            # ── Quick mode (2 sections) ──────────────────────────────
+            "functional_tests": f"""**ALL FUNCTIONAL SECTIONS: Test Plan + §1 + §2 + §3**
 
-Edit `{doc_file_path}` to fill Section 5 — Integration Tests.
-{'Use business context to identify the end-to-end business processes that span multiple components.' + chr(10) if business_section else ''}
-1. **Read the doc** to understand what Canvas Apps and flows exist
-2. **Identify cross-component interactions:**
-   - Canvas App triggering a Power Automate flow (via PowerAutomate.Run or button)
-   - Flow writing data that the Canvas App reads
-   - Multiple flows triggered in sequence
-   - Shared data sources across components
-3. **Write end-to-end test scenarios** that test the full chain:
-   - User action in Canvas App → triggers flow → flow completes → data visible in app
-   - Include EXACT steps for each integration test
-   - Include expected intermediate states, not just final result
-4. If no integration points are found, note that and suggest manual verification
+⚡ QUICK MODE — concise entries, no verbose descriptions.
 
-Only edit Section 5.""",
+{biz_hint}
+1. Fill Test Plan header (name, version, date, scope)
+2. §1 Environment: prerequisites, connections, test data table
+3. §2 Canvas: navigation, key formulas (happy path + one edge case each), CRUD ops, UI controls
+4. §3 Flows & Integration: triggers, key actions, error handling, end-to-end scenarios
+Keep 1 line per test case. Use actual component names from analysis.
 
-            "edge_boundary": f"""[TARGET] **SECTION 6: Edge Case & Boundary Tests**
+{files_inventory}
+Edit Test Plan, Sections 1–3.""",
 
-Edit `{doc_file_path}` to fill Section 6:
+            "quality_checklist": f"""**QUALITY & REGRESSION: §4 + §5 + TOC**
 
-1. **Read the doc** to see what components/formulas/flows exist
-2. **Fill subsections:**
-   - **6.1 Input Boundary Tests:** For every user input field found:
-     * Empty/null input
-     * Maximum length (if text)
-     * Special characters (quotes, HTML, unicode)
-     * Zero/negative (if numeric)
-     * Future/past dates (if date picker)
-   - **6.2 State & Timing Edge Cases:**
-     * App opened on mobile vs desktop
-     * Network disconnection during data operation
-     * Session timeout during long workflow
-     * Browser back button behavior
-     * Concurrent users editing same record
-   - **6.3 Delegation & Large Dataset Tests:**
-     * Identify ALL non-delegable queries from the formula analysis
-     * For each: what happens with 500+ records? 2000+ records?
-     * Document the delegation limit and expected behavior
+⚡ QUICK MODE — concise entries only.
 
-Only edit Section 6.""",
+1. §4 Quality: boundary tests, delegation risks, performance thresholds, security role checks, basic a11y
+2. §5 Regression: top 10 critical test scenarios
+3. Generate Table of Contents
+4. Replace remaining placeholders with content or "N/A"
+Keep entries brief. Ensure sequential Test IDs.
 
-            "perf_security_a11y": f"""[TARGET] **SECTIONS 7, 8, 9: Performance, Security & Accessibility**
-
-Edit `{doc_file_path}` to fill Sections 7-9:
-
-1. **Section 7 — Performance Tests:**
-   - App load time (target <5s)
-   - Gallery/list rendering with large datasets
-   - Flow execution time for each flow
-   - Concurrent user scenarios
-
-2. **Section 8 — Security & Access Tests:**
-   - Test with correct security role → full access
-   - Test without required role → access denied
-   - Test data visibility across different roles
-   - Test direct URL/deep link access
-   - Note if role-based testing isn't applicable, explain why
-
-3. **Section 9 — Accessibility Tests:**
-   - Standard WCAG 2.1 test scenarios
-   - Keyboard-only navigation
-   - Screen reader compatibility
-   - Color contrast
-   - Error identification
-
-Replace placeholder text with specific or standardized test cases.
-
-Only edit Sections 7-9.""",
-
-            "regression_checklist": f"""[TARGET] **SECTION 10 + Appendix: Regression Checklist & Final Cleanup**
-
-Edit `{doc_file_path}` to complete Section 10, Appendix, and Table of Contents:
-
-**Part A — Section 10 Regression Test Checklist:**
-1. Review the entire document and identify the TOP 10-15 most critical test scenarios
-2. Add them to the regression table with their Test ID reference
-3. These should cover: core navigation, main CRUD operations, key flow triggers, critical formulas
-
-**Part B — Appendix Test Execution Log:**
-- Leave as a blank template for testers to fill in during execution
-
-**Part C — Table of Contents:**
-Read the full document and generate a proper Table of Contents with markdown links.
-
-**Part D — Final cleanup:**
-- Replace any remaining template placeholders with actual content or "N/A"
-- Ensure all Test IDs are properly numbered (no gaps, no duplicates)
-- Ensure consistent table formatting
-- Remove any raw template instructions (lines starting with `>`)
-
-Edit Section 10, Appendix, Table of Contents, and do final cleanup.""",
+Edit Sections 4–5 and TOC.""",
         }
 
         instruction = section_instructions.get(section_id, f"Complete the {section_name} section.")
 
-        return f"""[!] CRITICAL: SECTION EDITING TASK — USE TOOLS ONLY
-
-DO NOT write text. USE read_file and replace_string_in_file to edit `{doc_file_path}`.
-
----
+        return f"""[!] USE TOOLS TO EDIT `{doc_file_path}` — NO TEXT.
 
 {selection_context}
 {business_section + chr(10) if business_section else ''}
-**TEST SCRIPTS FILE:** `{doc_file_path}`
-**You have analyzed {files_analyzed} files in previous passes.**
+**FILE:** `{doc_file_path}` | **Files analyzed:** {files_analyzed}
 
 ---
 
@@ -4096,22 +3888,11 @@ DO NOT write text. USE read_file and replace_string_in_file to edit `{doc_file_p
 
 ---
 
-[EDIT] **GUIDELINES:**
+Read file first, then use replace_string_in_file / multi_replace_string_in_file.
+Include 3–5 lines of context in oldString. Generate specific test cases with actual component names.
+Preserve content from other sections. Do not edit outside assigned scope.
 
-[OK] **DO:**
-- Read the file first with read_file to see current state
-- Use replace_string_in_file for precise edits
-- Include 3-5 lines of context in oldString for accurate matching
-- Generate SPECIFIC test cases with actual component/formula names from the analysis
-{'- Use the business context above to prioritize test scenarios and write test cases that reflect real business workflows' + chr(10) if business_section else ''}- Preserve content from other sections
-
-[STOP] **DON'T:**
-- Don't write conversational text — only use tools
-- Don't edit sections outside your assigned scope
-- Don't remove content added by earlier passes
-- Don't use generic placeholder test cases — be specific to the actual solution
-
-[START] **BEGIN IMMEDIATELY WITH TOOL CALLS.**"""
+BEGIN WITH TOOL CALLS."""
 
     
 
