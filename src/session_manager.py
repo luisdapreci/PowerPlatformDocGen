@@ -3,8 +3,7 @@ import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Optional, List
-from copilot import CopilotClient, CopilotSession
-from copilot.generated.rpc import PermissionDecisionApproved, PermissionDecisionReject
+from copilot import CopilotClient, CopilotSession, PermissionRequestResult
 import logging
 import config
 
@@ -23,7 +22,6 @@ class SessionManager:
         """Initialize the Copilot client"""
         try:
             self.client = CopilotClient()
-            await self.client.start()
             logger.info("Copilot client initialized")
             
             # Restore existing sessions if requested
@@ -197,9 +195,9 @@ Use these tools to explore and analyze Power Platform components directly."""
             },
             # Auto-approve file read requests; deny shell/write for security
             "on_permission_request": lambda req, ctx: (
-                PermissionDecisionReject()
-                if req.kind in ("shell", "write")
-                else PermissionDecisionApproved()
+                PermissionRequestResult(kind="denied-by-rules")
+                if req.kind.value in ("shell", "write")
+                else PermissionRequestResult(kind="approved")
             ),
         }
         
@@ -212,7 +210,7 @@ Use these tools to explore and analyze Power Platform components directly."""
             }
         
         try:
-            copilot_session = await self.client.create_session(**session_config)
+            copilot_session = await self.client.create_session(session_config)
             
             # Store managed session
             managed_session = ManagedSession(
@@ -439,7 +437,7 @@ Use these tools to explore and analyze Power Platform components directly."""
         managed = self.sessions.get(session_id)
         if managed:
             try:
-                await managed.copilot_session.disconnect()
+                await managed.copilot_session.destroy()
                 logger.info(f"Destroyed session {session_id}")
             except Exception as e:
                 logger.error(f"Error destroying session {session_id}: {e}")

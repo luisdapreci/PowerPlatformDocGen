@@ -8,8 +8,7 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from datetime import datetime
-from copilot import CopilotClient
-from copilot.generated.rpc import PermissionDecisionApproved, PermissionDecisionReject
+from copilot import CopilotClient, PermissionRequestResult
 import config
 
 logger = logging.getLogger(__name__)
@@ -29,7 +28,6 @@ class DocumentationGenerator:
         """Initialize the Copilot client for doc generation"""
         try:
             self.client = CopilotClient()
-            await self.client.start()
             logger.info("Documentation generator Copilot client initialized")
         except Exception as e:
             logger.error(f"Failed to initialize doc generator Copilot client: {e}")
@@ -142,9 +140,9 @@ class DocumentationGenerator:
                 # By omitting it, ALL built-in file operation tools are available.
                 # Auto-approve file read/write requests; deny shell for security
                 "on_permission_request": lambda req, ctx: (
-                    PermissionDecisionReject()
-                    if req.kind == "shell"
-                    else PermissionDecisionApproved()
+                    PermissionRequestResult(kind="denied-by-rules")
+                    if req.kind.value == "shell"
+                    else PermissionRequestResult(kind="approved")
                 ),
                 "system_message": {
                     "mode": "append",
@@ -156,7 +154,7 @@ class DocumentationGenerator:
                 }
             }
             
-            temp_session = await self.client.create_session(**session_config)
+            temp_session = await self.client.create_session(session_config)
             logger.info(f"Created incremental editing session for {session_id} (mode={generation_mode})")
             
             # Build context sections
@@ -222,7 +220,7 @@ class DocumentationGenerator:
                     
                     # Send prompt (no screenshot attachments — screenshots get their own passes)
                     result = await temp_session.send_and_wait(
-                        prompt,
+                        {"prompt": prompt},
                         timeout=file_timeout
                     )
                     
@@ -282,8 +280,10 @@ class DocumentationGenerator:
                         _ss_before = doc_file.read_text(encoding='utf-8')
                         try:
                             ss_result = await temp_session.send_and_wait(
-                                ss_prompt,
-                                attachments=[{"type": "file", "path": ss.get('ai_path', ss['path'])}],
+                                {
+                                    "prompt": ss_prompt,
+                                    "attachments": [{"type": "file", "path": ss.get('ai_path', ss['path'])}]
+                                },
                                 timeout=screenshot_timeout
                             )
                             _ss_after = doc_file.read_text(encoding='utf-8')
@@ -335,8 +335,10 @@ class DocumentationGenerator:
                 _ss_before = doc_file.read_text(encoding='utf-8')
                 try:
                     ss_result = await temp_session.send_and_wait(
-                        ss_prompt,
-                        attachments=[{"type": "file", "path": ss.get('ai_path', ss['path'])}],
+                        {
+                            "prompt": ss_prompt,
+                            "attachments": [{"type": "file", "path": ss.get('ai_path', ss['path'])}]
+                        },
                         timeout=screenshot_timeout
                     )
                     _ss_after = doc_file.read_text(encoding='utf-8')
@@ -393,7 +395,7 @@ class DocumentationGenerator:
                     )
                     
                     result = await temp_session.send_and_wait(
-                        section_prompt,
+                        {"prompt": section_prompt},
                         timeout=section_timeout
                     )
                     
@@ -787,7 +789,7 @@ NO TEXT RESPONSES — ONLY TOOL CALLS."""
             }
             
             # Disable infinite sessions for doc generation (keep it simple)
-            temp_session = await self.client.create_session(**session_config)
+            temp_session = await self.client.create_session(session_config)
             logger.info(f"Created isolated Copilot session for doc generation: {session_id}")
             
             # PASS 1: Analyze each critical file individually
@@ -816,7 +818,7 @@ NO TEXT RESPONSES — ONLY TOOL CALLS."""
                     
                     # Send and wait for response WITHOUT streaming to WebSocket
                     result = await temp_session.send_and_wait(
-                        prompt,
+                        {"prompt": prompt},
                         timeout=config.DOC_GEN_FILE_TIMEOUT  # Per-file timeout (configurable)
                     )
                     
@@ -902,7 +904,7 @@ NO TEXT RESPONSES — ONLY TOOL CALLS."""
                     
                     # Generate this section
                     result = await temp_session.send_and_wait(
-                        section_prompt,
+                        {"prompt": section_prompt},
                         timeout=config.DOC_GEN_SECTION_TIMEOUT  # Per-section timeout
                     )
                     
@@ -2984,9 +2986,9 @@ Output the section now:"""
                 "working_directory": str(working_directory),
                 "streaming": False,
                 "on_permission_request": lambda req, ctx: (
-                    PermissionDecisionReject()
-                    if req.kind == "shell"
-                    else PermissionDecisionApproved()
+                    PermissionRequestResult(kind="denied-by-rules")
+                    if req.kind.value == "shell"
+                    else PermissionRequestResult(kind="approved")
                 ),
                 "system_message": {
                     "mode": "append",
@@ -2996,7 +2998,7 @@ Output the section now:"""
                 }
             }
 
-            temp_session = await self.client.create_session(**session_config)
+            temp_session = await self.client.create_session(session_config)
             logger.info(f"Created user guide editing session for {session_id}")
 
             business_section = ""
@@ -3022,7 +3024,7 @@ Output the section now:"""
             )
 
             await temp_session.send_and_wait(
-                bulk_prompt,
+                {"prompt": bulk_prompt},
                 timeout=config.DOC_GEN_SECTION_TIMEOUT * 2  # longer for bulk
             )
 
@@ -3058,7 +3060,7 @@ Output the section now:"""
                     )
 
                     await temp_session.send_and_wait(
-                        section_prompt,
+                        {"prompt": section_prompt},
                         timeout=config.DOC_GEN_SECTION_TIMEOUT
                     )
 
@@ -3482,9 +3484,9 @@ BEGIN WITH TOOL USAGE IMMEDIATELY."""
                 "working_directory": str(working_directory.parent),
                 "streaming": False,
                 "on_permission_request": lambda req, ctx: (
-                    PermissionDecisionReject()
-                    if req.kind == "shell"
-                    else PermissionDecisionApproved()
+                    PermissionRequestResult(kind="denied-by-rules")
+                    if req.kind.value == "shell"
+                    else PermissionRequestResult(kind="approved")
                 ),
                 "system_message": {
                     "mode": "append",
@@ -3494,7 +3496,7 @@ BEGIN WITH TOOL USAGE IMMEDIATELY."""
                 }
             }
 
-            temp_session = await self.client.create_session(**session_config)
+            temp_session = await self.client.create_session(session_config)
             logger.info(f"Created QA test scripts session for {session_id}")
 
             business_section = ""
@@ -3534,7 +3536,7 @@ BEGIN WITH TOOL USAGE IMMEDIATELY."""
                     )
 
                     await temp_session.send_and_wait(
-                        prompt,
+                        {"prompt": prompt},
                         timeout=file_timeout
                     )
 
@@ -3579,8 +3581,7 @@ BEGIN WITH TOOL USAGE IMMEDIATELY."""
                     )
                     try:
                         await temp_session.send_and_wait(
-                            ss_prompt,
-                            attachments=[{"type": "file", "path": ss.get('ai_path', ss['path'])}],
+                            {"prompt": ss_prompt, "attachments": [{"type": "file", "path": ss.get('ai_path', ss['path'])}]},
                             timeout=screenshot_timeout
                         )
                     except Exception as e:
@@ -3602,8 +3603,7 @@ BEGIN WITH TOOL USAGE IMMEDIATELY."""
                 )
                 try:
                     await temp_session.send_and_wait(
-                        ss_prompt,
-                        attachments=[{"type": "file", "path": ss.get('ai_path', ss['path'])}],
+                        {"prompt": ss_prompt, "attachments": [{"type": "file", "path": ss.get('ai_path', ss['path'])}]},
                         timeout=screenshot_timeout
                     )
                 except Exception as e:
@@ -3629,7 +3629,7 @@ BEGIN WITH TOOL USAGE IMMEDIATELY."""
                         working_directory=working_directory,
                     )
                     await temp_session.send_and_wait(
-                        section_prompt,
+                        {"prompt": section_prompt},
                         timeout=section_timeout
                     )
 

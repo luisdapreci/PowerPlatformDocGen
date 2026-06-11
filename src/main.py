@@ -1256,7 +1256,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
             # Send message to Copilot (non-blocking)
             try:
                 logger.info(f"📤 Sending message to Copilot SDK...")
-                result = await copilot_session.send(message)
+                result = await copilot_session.send({"prompt": message})
                 logger.info(f"✅ Message sent to Copilot SDK, result type: {type(result)}")
                 
                 # Wait for processing to complete or timeout
